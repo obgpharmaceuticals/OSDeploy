@@ -2,7 +2,7 @@
 #   OS: Params and Start-OSDCloud
 #=======================================================================
 $Params = @{
-    OSBuild = "20H1"
+    OSBuild = "22H2"
     OSEdition = "Enterprise"
     OSLanguage = "en-gb"
     OSLicense = "Volume"
