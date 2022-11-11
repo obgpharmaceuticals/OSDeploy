@@ -62,7 +62,7 @@ do
  until ($ImageLocation -ne "NotSet")
 
 
-if($ImageLocation eq "Local"){
+if($ImageLocation -eq "Local"){
     Start-OSDCloud -ImageFileUrl $ImageURL
 }
 else {
