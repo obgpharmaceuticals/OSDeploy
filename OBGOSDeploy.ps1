@@ -17,9 +17,10 @@ function Show-ImageMenu
     )
     Write-Host "================ $Title ================"
     
-    Write-Host "1: Cloud - Standard"
-    Write-Host "2: Local"
-    Write-Host "3: Cloud - Custom"
+    Write-Host "1: Standard - Cloud"
+    Write-Host "2: Standard - Local"
+    Write-Host "3: Custom - Cloud"
+    Write-Host "4: Custom - Local"
 }
 
 #=======================================================================
@@ -57,9 +58,12 @@ do
              $ImageLocation = "Cloud"
          } '2' {
              $ImageLocation = "Local"
-             $ImageURL = Read-Host "Enter image URL [" $ImageUrlDefault "]"
+             $ImageIndex = 3
          } '3' {
              $ImageLocation = "CloudCustom"
+             $ImageURL = Read-Host "Enter image URL"
+         } '4' {
+             $ImageLocation = "LocalCustom"
              $ImageURL = Read-Host "Enter image URL"
          }
      }
@@ -72,16 +76,23 @@ do
 
 
 if($ImageLocation -eq "Local"){
-    Start-OSDCloud -ImageFileUrl $ImageURL
-}
-else {
-    if($ImageLocation -eq "CloudCustom"){
-        $Params = @{
-            SkipAutopilot = $true
-            SkipODT = $true
-            ZTI = $true
+    $Params = @{
+        SkipAutopilot = $true
+        SkipODT = $true
+        ZTI = $true
+        ImageFileUrl = $ImageURL 
+        ImageIndex = $ImageIndex
         }
-    else{
+}
+elseif($ImageLocation -eq "LocalCustom"){
+    $Params = @{
+        SkipAutopilot = $true
+        SkipODT = $true
+        ZTI = $true
+        ImageFileUrl = $ImageURL 
+        }
+}
+elseif($ImageLocation -eq "Cloud"){
         $Params = @{
             OSVersion = "Windows 10"
             OSBuild = "20H2"
@@ -92,9 +103,15 @@ else {
             SkipODT = $true
             ZTI = $true
         }
-    }
-    Start-OSDCloud @Params
+elseif($ImageLocation -eq "CloudCustom"){
+        $Params = @{
+            SkipAutopilot = $true
+            SkipODT = $true
+            ZTI = $true
+        }    
 }
+
+Start-OSDCloud @Params
 
 #=======================================================================
 #   PostOS: OOBE Staging
