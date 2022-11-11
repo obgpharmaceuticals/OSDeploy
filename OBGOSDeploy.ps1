@@ -41,7 +41,7 @@ do
          }
      }
  }
- until ($GroupTag != "NotSet")
+ until ($GroupTag -ne "NotSet")
 
 $selection = "" 
 $ImageLocation = "NotSet"
@@ -59,10 +59,10 @@ do
          }
      }
  }
- until ($ImageLocation <> "NotSet")
+ until ($ImageLocation -ne "NotSet")
 
 
-if($ImageLocation = "Local"){
+if($ImageLocation eq "Local"){
     Start-OSDCloud -ImageFileUrl $ImageURL
 }
 else {
