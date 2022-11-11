@@ -2,14 +2,14 @@
 #   OS: Params and Start-OSDCloud
 #=======================================================================
 $Params = @{
-    OSVersion = "Windows 10"
-    OSBuild = "22H2"
-    OSEdition = "Enterprise"
-    OSLanguage = "en-gb"
-    OSLicense = "Volume"
-    SkipAutopilot = $true
-    SkipODT = $true
-    ZTI = $true
+    #OSVersion = "Windows 10"
+    #OSBuild = "22H2"
+    #OSEdition = "Enterprise"
+    #OSLanguage = "en-gb"
+    #OSLicense = "Volume"
+    #SkipAutopilot = $true
+    #SkipODT = $true
+    #ZTI = $true
     ImageFileUrl = "http://10.1.100.187/install.wim"
 }
 Start-OSDCloud @Params
