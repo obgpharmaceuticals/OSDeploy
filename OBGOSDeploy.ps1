@@ -1,20 +1,84 @@
+function Show-GroupTagMenu
+{
+    param (
+        [string]$Title = 'Computer Type'
+    )
+    Write-Host "================ $Title ================"
+    
+    Write-Host "1: Productivity Desktop"
+    Write-Host "2: Productivity Laptop"
+    Write-Host "3: Line of Business"
+}
+
+function Show-ImageMenu
+{
+    param (
+        [string]$Title = 'Image to Use'
+    )
+    Write-Host "================ $Title ================"
+    
+    Write-Host "1: Microsoft Cloud Image"
+    Write-Host "2: Local Image"
+}
+
 #=======================================================================
 #   OS: Params and Start-OSDCloud
 #=======================================================================
-$Params = @{
-    OSVersion = "Windows 10"
-    OSBuild = "22H2"
-    OSEdition = "Enterprise"
-    OSLanguage = "en-gb"
-    OSLicense = "Volume"
-    SkipAutopilot = $true
-    SkipODT = $true
-    ZTI = $true
-    
-}
-#Start-OSDCloud @Params
 
-Start-OSDCloud -ImageFileUrl 'http://10.1.100.187/install.wim'
+$GroupTag = "NotSet"
+do
+ {
+     Show-GroupTagMenu
+     $selection = Read-Host "Please make a selection"
+     switch ($selection)
+     {
+         '1' {
+             $GroupTag = "ProductivityDesktop"
+         } '2' {
+             $GroupTag = "ProductivityLaptop"
+         } '3' {
+             $GroupTag = "LineOfBusiness"
+         }
+     }
+ }
+ until ($GroupTag != "NotSet")
+
+$selection = "" 
+$ImageLocation = "NotSet"
+do
+ {
+     Show-ImageMenu
+     $selection = Read-Host "Please make a selection"
+     switch ($selection)
+     {
+         '1' {
+             $ImageLocation = "Cloud"
+         } '2' {
+             $ImageLocation = "Local"
+             $ImageURL = Read-Host "Enter image URL"
+         }
+     }
+ }
+ until ($ImageLocation != "NotSet")
+
+
+if($ImageLocation = "Local"){
+    Start-OSDCloud -ImageFileUrl $ImageURL
+}
+else {
+    $Params = @{
+        OSVersion = "Windows 10"
+        OSBuild = "22H2"
+        OSEdition = "Enterprise"
+        OSLanguage = "en-gb"
+        OSLicense = "Volume"
+        SkipAutopilot = $true
+        SkipODT = $true
+        ZTI = $true
+    
+    }
+    Start-OSDCloud @Params
+}
 
 #=======================================================================
 #   PostOS: OOBE Staging
@@ -76,7 +140,7 @@ $AutopilotOOBEJson = @'
     "Assign":  {
                    "IsPresent":  true
                },
-    "GroupTag":  "ProductivityDesktop",
+    "GroupTag":  $GroupTag,
     "GroupTagOptions":  [
                             "ProductivityDesktop",
                             "ProductivityLaptop",
