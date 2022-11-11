@@ -133,8 +133,6 @@ $OOBEDeployJson = @'
                     "Microsoft.Messaging",
                     "Microsoft.MicrosoftOfficeHub",
                     "Microsoft.MicrosoftSolitaireCollection",
-                    "Microsoft.MicrosoftStickyNotes",
-                    "Microsoft.MSPaint",
                     "Microsoft.People",
                     "Microsoft.PowerAutomateDesktop",
                     "Microsoft.StorePurchaseApp",
