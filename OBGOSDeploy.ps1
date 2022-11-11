@@ -16,7 +16,6 @@ $Params = @{
 
 Start-OSDCloud -ImageFileUrl 'http://10.1.100.187/install.wim'
 
-
 #=======================================================================
 #   PostOS: OOBE Staging
 #=======================================================================
@@ -68,7 +67,6 @@ If (!(Test-Path "C:\ProgramData\OSDeploy")) {
     New-Item "C:\ProgramData\OSDeploy" -ItemType Directory -Force | Out-Null
 }
 $OOBEDeployJson | Out-File -FilePath "C:\ProgramData\OSDeploy\OSDeploy.OOBEDeploy.json" -Encoding ascii -Force
-
 
 #=======================================================================
 #   PostOS: AutopilotOOBE Staging
