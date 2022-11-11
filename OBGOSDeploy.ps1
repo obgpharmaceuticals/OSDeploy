@@ -17,8 +17,9 @@ function Show-ImageMenu
     )
     Write-Host "================ $Title ================"
     
-    Write-Host "1: Microsoft Cloud Image"
-    Write-Host "2: Local Image"
+    Write-Host "1: Cloud - Standard"
+    Write-Host "2: Local"
+    Write-Host "3: Cloud - Custom"
 }
 
 #=======================================================================
@@ -56,6 +57,9 @@ do
          } '2' {
              $ImageLocation = "Local"
              $ImageURL = Read-Host "Enter image URL"
+         } '3' {
+             $ImageLocation = "CloudCustom"
+             $ImageURL = Read-Host "Enter image URL"
          }
      }
  }
@@ -66,16 +70,23 @@ if($ImageLocation -eq "Local"){
     Start-OSDCloud -ImageFileUrl $ImageURL
 }
 else {
-    $Params = @{
-        OSVersion = "Windows 10"
-        OSBuild = "22H2"
-        OSEdition = "Enterprise"
-        OSLanguage = "en-gb"
-        OSLicense = "Volume"
-        SkipAutopilot = $true
-        SkipODT = $true
-        ZTI = $true
-    
+    if($ImageLocation -eq "CloudCustom"){
+        $Params = @{
+            SkipAutopilot = $true
+            SkipODT = $true
+            ZTI = $true
+        }
+    else{
+        $Params = @{
+            OSVersion = "Windows 10"
+            OSBuild = "20H2"
+            OSEdition = "Enterprise"
+            OSLanguage = "en-gb"
+            OSLicense = "Volume"
+            SkipAutopilot = $true
+            SkipODT = $true
+            ZTI = $true
+        }
     }
     Start-OSDCloud @Params
 }
