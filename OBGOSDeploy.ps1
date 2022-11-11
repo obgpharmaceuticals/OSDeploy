@@ -10,7 +10,7 @@ $Params = @{
     SkipAutopilot = $true
     SkipODT = $true
     ZTI = $true
-    ImageFileUrl = 'http://10.1.100.187/install.wim'
+    ImageFileUrl = "http://10.1.100.187/install.wim"
 }
 Start-OSDCloud @Params
 
