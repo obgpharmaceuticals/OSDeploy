@@ -49,28 +49,28 @@ $selection = ""
 $ImageLocation = "NotSet"
 $ImageURLDefault = "http://10.1.100.25/install.wim"
 do
- {
-     Show-ImageMenu
-     $selection = Read-Host "Please make a selection"
-     switch ($selection)
-     {
-         '1' {
-             $ImageLocation = "Cloud"
-         } '2' {
-             $ImageLocation = "Local"
-             $ImageIndex = 3
-         } '3' {
-             $ImageLocation = "CloudCustom"
-             $ImageURL = Read-Host "Enter image URL"
-         } '4' {
-             $ImageLocation = "LocalCustom"
-             $ImageURL = Read-Host "Enter image URL"
-         }
-     }
- }
- until ($ImageLocation -ne "NotSet")
+{
+    Show-ImageMenu
+    $selection = Read-Host "Please make a selection"
+    switch ($selection)
+    {
+        '1' {
+            $ImageLocation = "Cloud"
+        } '2' {
+            $ImageLocation = "Local"
+            $ImageIndex = 3
+        } '3' {
+            $ImageLocation = "CloudCustom"
+            $ImageURL = Read-Host "Enter image URL"
+        } '4' {
+            $ImageLocation = "LocalCustom"
+            $ImageURL = Read-Host "Enter image URL"
+        }
+    }
+}
+until ($ImageLocation -ne "NotSet")
 
- If($ImageURL -eq "") {
+If($ImageURL -eq "") {
     $ImageURL = $ImageURLDefault
 }
 
@@ -103,6 +103,7 @@ elseif($ImageLocation -eq "Cloud"){
             SkipODT = $true
             ZTI = $true
         }
+}
 elseif($ImageLocation -eq "CloudCustom"){
         $Params = @{
             SkipAutopilot = $true
