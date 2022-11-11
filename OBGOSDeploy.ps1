@@ -146,7 +146,7 @@ $OOBEDeployJson | Out-File -FilePath "C:\ProgramData\OSDeploy\OSDeploy.OOBEDeplo
 #=======================================================================
 #   PostOS: AutopilotOOBE Staging
 #=======================================================================
-$AutopilotOOBEJson = @'
+$AutopilotOOBEJson = @"
 {
     "Assign":  {
                    "IsPresent":  true
@@ -168,7 +168,7 @@ $AutopilotOOBEJson = @'
     "Docs":  "https://autopilotoobe.osdeploy.com/",
     "Title":  "OBG Autopilot Registration"
 }
-'@
+"@
 $AutopilotOOBEJson | Out-File -FilePath "C:\ProgramData\OSDeploy\OSDeploy.AutopilotOOBE.json"
 
 
