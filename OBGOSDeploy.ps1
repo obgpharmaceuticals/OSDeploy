@@ -46,6 +46,7 @@ do
 
 $selection = "" 
 $ImageLocation = "NotSet"
+$ImageURLDefault = "http://10.1.100.25/install.wim"
 do
  {
      Show-ImageMenu
@@ -56,7 +57,7 @@ do
              $ImageLocation = "Cloud"
          } '2' {
              $ImageLocation = "Local"
-             $ImageURL = Read-Host "Enter image URL"
+             $ImageURL = Read-Host "Enter image URL [" $ImageUrlDefault "]"
          } '3' {
              $ImageLocation = "CloudCustom"
              $ImageURL = Read-Host "Enter image URL"
@@ -64,6 +65,10 @@ do
      }
  }
  until ($ImageLocation -ne "NotSet")
+
+ If($ImageURL -eq "") {
+    $ImageURL = $ImageURLDefault
+}
 
 
 if($ImageLocation -eq "Local"){
