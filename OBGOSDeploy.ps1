@@ -59,7 +59,7 @@ do
          }
      }
  }
- until ($ImageLocation != "NotSet")
+ until ($ImageLocation <> "NotSet")
 
 
 if($ImageLocation = "Local"){
