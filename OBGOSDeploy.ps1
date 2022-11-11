@@ -172,3 +172,5 @@ Start /Wait PowerShell -NoL -C Start-OOBEDeploy
 Start /Wait PowerShell -NoL -C Restart-Computer -Force
 '@
 $OOBETasksCMD | Out-File -FilePath 'C:\Windows\System32\OOBE.CMD' -Encoding ascii -Force
+
+Restart-Computer
