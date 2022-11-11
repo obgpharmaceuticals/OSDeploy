@@ -2,12 +2,14 @@
 #   OS: Params and Start-OSDCloud
 #=======================================================================
 $Params = @{
+    OSVersion = "Windows 10"
     OSBuild = "22H2"
     OSEdition = "Enterprise"
     OSLanguage = "en-gb"
     OSLicense = "Volume"
     SkipAutopilot = $true
     SkipODT = $true
+    ZTI = $true
 }
 Start-OSDCloud @Params
 
