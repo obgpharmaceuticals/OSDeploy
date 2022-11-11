@@ -70,7 +70,7 @@ do
 }
 until ($ImageLocation -ne "NotSet")
 
-If($ImageURL -eq "") {
+If($ImageURL -eq "" -or $ImageURL -eq $null) {
     $ImageURL = $ImageURLDefault
 }
 
