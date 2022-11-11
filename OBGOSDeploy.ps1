@@ -151,7 +151,7 @@ $AutopilotOOBEJson = @"
     "Assign":  {
                    "IsPresent":  true
                },
-    "GroupTag":  $GroupTag,
+    "GroupTag":  `"$GroupTag`",
     "GroupTagOptions":  [
                             "ProductivityDesktop",
                             "ProductivityLaptop",
