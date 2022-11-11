@@ -14,7 +14,7 @@ $Params = @{
 }
 #Start-OSDCloud @Params
 
-Start-OSDCloud -ImageFileUrl "http://10.1.100.187/install.wim"
+Start-OSDCloud -ImageFileUrl 'http://10.1.100.187/install.wim'
 
 
 #=======================================================================
