@@ -211,13 +211,25 @@ $OOBETasksCMD | Out-File -FilePath 'C:\Windows\System32\OOBE.CMD' -Encoding asci
 $UnattendXml = @'
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
-    <settings pass="specialize">
+    <settings pass="oobeSystem">
+        <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <Reseal>
+                <Mode>Audit</Mode>
+            </Reseal>
+        </component>
+    </settings>
+    <settings pass="auditUser">
         <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <RunSynchronous>
                 <RunSynchronousCommand wcm:action="add">
-                    <Order>1</Order>
-                    <Description>OSDCloud Specialize</Description>
-                    <Path>oobe.cmd</Path>
+                <Order>1</Order>
+                <Description>Set ExecutionPolicy Bypass</Description>
+                <Path>PowerShell -WindowStyle Hidden -Command "Set-ExecutionPolicy Bypass -Force"</Path>
+                </RunSynchronousCommand>
+                <RunSynchronousCommand wcm:action="add">
+                <Order>2</Order>
+                <Description>OOBE</Description>
+                <Path>oobe.cmd</Path>
                 </RunSynchronousCommand>
             </RunSynchronous>
         </component>
