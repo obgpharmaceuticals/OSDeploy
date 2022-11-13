@@ -232,6 +232,9 @@ $UnattendXml = @'
                 <Path>oobe.cmd</Path>
                 </RunSynchronousCommand>
             </RunSynchronous>
+            <Reseal>
+                <Mode>OOBE</Mode>
+            </Reseal>
         </component>
     </settings>
 </unattend>
