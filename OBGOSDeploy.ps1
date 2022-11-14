@@ -153,7 +153,7 @@ $OOBEJson = @'
     "UpdateDrivers": true,
     "UpdateWindows": true,
     "AutopilotOOBE": true,
-    "GroupTagID": $GroupTagID
+    "GroupTagID": "$GroupTagID"
 }
 '@
 
