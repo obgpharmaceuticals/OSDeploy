@@ -180,8 +180,6 @@ Write-Host -ForegroundColor Green "Create C:\Windows\System32\OOBE.CMD"
 $OOBETasksCMD = @"
 PowerShell -NoL -Com Set-ExecutionPolicy RemoteSigned -Force
 Set Path = %PATH%;C:\Program Files\WindowsPowerShell\Scripts
-Start /Wait PowerShell -NoL -C "`$Transcript = `$((Get-Date).ToString('yyyy-MM-dd-HHmmss'))-OOBEDeploy.log"
-Start /Wait PowerShell -NoL -C Start-Transcript -Path (Join-Path `$env:SystemRoot\Temp `$Transcript) -ErrorAction Ignore
 Start /Wait PowerShell -NoL -C Install-Module OSD -Force -Verbose
 Start /Wait PowerShell -NoL -C Invoke-WebPSScript https://raw.githubusercontent.com/obgpharmaceuticals/OSDeploy/main/OOBE.ps1
 "@
