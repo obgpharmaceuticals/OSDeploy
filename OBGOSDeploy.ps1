@@ -183,7 +183,7 @@ $OOBETasksCMD = @"
 PowerShell -NoL -Com Set-ExecutionPolicy RemoteSigned -Force
 Set Path = %PATH%;C:\Program Files\WindowsPowerShell\Scripts
 `$Transcript = `$((Get-Date).ToString('yyyy-MM-dd-HHmmss'))-OOBEDeploy.log"
-Start-Transcript -Path (Join-Path "$env:SystemRoot\Temp" $Transcript) -ErrorAction Ignore
+Start-Transcript -Path (Join-Path `$env:SystemRoot\Temp `$Transcript) -ErrorAction Ignore
 Start /Wait PowerShell -NoL -C Install-Module OSD -Force -Verbose
 Start /Wait PowerShell -NoL -C 'Invoke-WebPSScript https://raw.githubusercontent.com/obgpharmaceuticals/OSDeploy/main/OOBE.ps1'
 "@
