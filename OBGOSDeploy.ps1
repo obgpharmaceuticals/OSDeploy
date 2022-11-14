@@ -118,11 +118,11 @@ Start-OSDCloud @Params
 #   PostOS: OOBE Staging
 #=======================================================================
 
-$OOBEDeployJson = @'
+$OOBEJson = @'
 {
-    "Autopilot":  {
-                      "IsPresent":  false
-                  },
+    "Updates":     [
+                    "KB5019959"
+                   ],
     "RemoveAppx":  [
                     "MicrosoftTeams",
                     "Microsoft.BingWeather",
@@ -154,7 +154,10 @@ $OOBEDeployJson = @'
                           "IsPresent":  true
                       },
     "UpdateWindows":  {
-                          "IsPresent":  false
+                          "IsPresent":  true
+                      },
+    "AutopilotOOBE":  {
+                          "IsPresent":  true
                       }
 }
 '@
@@ -162,46 +165,104 @@ $OOBEDeployJson = @'
 If (!(Test-Path "C:\ProgramData\OSDeploy")) {
     New-Item "C:\ProgramData\OSDeploy" -ItemType Directory -Force | Out-Null
 }
-$OOBEDeployJson | Out-File -FilePath "C:\ProgramData\OSDeploy\OSDeploy.OOBEDeploy.json" -Encoding ascii -Force
 
-#=======================================================================
-#   PostOS: AutopilotOOBE Staging
-#=======================================================================
-$AutopilotOOBEJson = @"
-{
-    "Assign":  {
-                   "IsPresent":  true
-               },
-    "GroupTag":  `"$GroupTag`",
-    "GroupTagOptions":  [
-                            "ProductivityDesktop",
-                            "ProductivityLaptop",
-                            "LineOfBusiness"
-                        ],
-    "Hidden":  [
-                   "AddToGroup",
-                   "AssignedComputerName",
-                   "AssignedUser",
-                   "PostAction"
-               ],
-    "PostAction":  "Quit",
-    "Run":  "NetworkingWireless",
-    "Docs":  "https://autopilotoobe.osdeploy.com/",
-    "Title":  "OBG Autopilot Registration"
-}
-"@
-$AutopilotOOBEJson | Out-File -FilePath "C:\ProgramData\OSDeploy\OSDeploy.AutopilotOOBE.json"
+$OOBEJson | Out-File -FilePath "C:\ProgramData\OSDeploy\OOBE.json" -Encoding ascii -Force
+
+
+        Write-Host -ForegroundColor DarkGray "========================================================================="
+        Write-Host -ForegroundColor Green "Start OOBE"
+        $ProgramDataOSDeploy = "$env:ProgramData\OSDeploy"
+        $JsonPath = "$ProgramDataOSDeploy\OOBE.json"
+        #=================================================
+        # Transcript
+        #=================================================
+        Write-Host -ForegroundColor DarkGray "========================================================================="
+        Write-Host -ForegroundColor Cyan "$((Get-Date).ToString('yyyy-MM-dd-HHmmss')) Start-Transcript"
+        $Transcript = "$((Get-Date).ToString('yyyy-MM-dd-HHmmss'))-OOBEDeploy.log"
+        Start-Transcript -Path (Join-Path "$env:SystemRoot\Temp" $Transcript) -ErrorAction Ignore
+        #=================================================
+        # Window Title
+        #=================================================
+        $Global:OOBEDeployWindowTitle = "Running Start-OOBEDeploy $env:SystemRoot\Temp\$Transcript"
+        $host.ui.RawUI.WindowTitle = $Global:OOBEDeployWindowTitle
+
+    #=================================================
+    # Import Json
+    #=================================================
+    if (Test-Path $JsonPath) {
+        Write-Host -ForegroundColor DarkGray "Importing Configuration $JsonPath"
+        $ImportOOBE = @()
+        $ImportOOBE = Get-Content -Raw -Path $JsonPath | ConvertFrom-Json
+    
+        $ImportOOBE.PSObject.Properties | ForEach-Object {
+            if ($_.Value -match 'IsPresent=True') {
+                $_.Value = $true
+            }
+            if ($_.Value -match 'IsPresent=False') {
+                $_.Value = $false
+            }
+            if ($null -eq $_.Value) {
+                Continue
+            }
+            Set-Variable -Name $_.Name -Value $_.Value -Force
+        }
+    }
 
 
 Write-Host -ForegroundColor Green "Create C:\Windows\System32\OOBE.CMD"
-$OOBETasksCMD = @'
+$OOBETasksCMD = @"
 PowerShell -NoL -Com Set-ExecutionPolicy RemoteSigned -Force
 Set Path = %PATH%;C:\Program Files\WindowsPowerShell\Scripts
-Start /Wait PowerShell -NoL -C Install-Module AutopilotOOBE -Force -Verbose
 Start /Wait PowerShell -NoL -C Install-Module OSD -Force -Verbose
-Start /Wait PowerShell -NoL -C Start-AutopilotOOBE
-Start /Wait PowerShell -NoL -C Start-OOBEDeploy
-'@
+"@
+
+if ($UpdateDrivers -or $UpdateWindows){
+    Write-Host -ForegroundColor DarkGray "========================================================================="
+    Write-Host -ForegroundColor Green "Installing PSWindowsUpdate"
+    $OOBETasksCMD += "`n"
+    $OOBETasksCMD += 'Start /Wait PowerShell -NoL -C Install-Module PSWindowsUpdate -Force -Verbose'
+}
+
+if ($UpdateDrivers){
+    
+    Write-Host -ForegroundColor Green "Driver Updates Enabled"
+    $OOBETasksCMD += "`n"
+    $OOBETasksCMD += 'Start /Wait PowerShell -NoL -C ''Install-WindowsUpdate -Install -AcceptAll -UpdateType Driver -MicrosoftUpdate -ForceDownload -ForceInstall -IgnoreReboot -ErrorAction SilentlyContinue -Verbose | Out-File c:\OSDCloud\Logs\Drivers_Install_1_$(get-date -f dd-MM-yyyy).log -Force'''
+}
+
+if ($UpdateWindows){
+    Write-Host -ForegroundColor Green "Windows Updates Enabled"
+    $OOBETasksCMD += "`n"
+    $array = @()
+
+    foreach ($item in $Updates){
+        $array += $item
+        Write-Host -ForegroundColor DarkGray $item
+    }
+
+    $OOBETasksCMD += 'Start /Wait PowerShell -NoL -C ''Install-WindowsUpdate -KBArticleID' 
+    $OOBETasksCMD += $array -join ", "
+    $OOBETasksCMD += '-AcceptAll -IgnoreReboot -ErrorAction SilentlyContinue -Verbose | Out-File c:\OSDCloud\Logs\Updates_Install_1_$(get-date -f dd-MM-yyyy).log -Force'''
+}
+
+if ($RemoveAppx){
+    Write-Host -ForegroundColor Green "Remove AppX Enabled"
+    $array = @()
+
+    foreach ($item in $RemoveAppx){
+        $array += "Start /Wait PowerShell -NoL -C 'Remove-AppxOnline $item'"
+        Write-Host -ForegroundColor DarkGray $item
+    }
+    $OOBETasksCMD += "`n"
+    $OOBETasksCMD += $array -join "`n"
+}
+
+if ($AutopilotOOBE){
+    Write-Host -ForegroundColor Green "AutoPilot Enabled"
+    $OOBETasksCMD += "`n"
+    $OOBETasksCMD += 'Start /Wait PowerShell -NoL -C ''Invoke-WebPSScript https://www.githubusercontent.com/obgpharmaceuticals/OSDeploy/main/AutoPilotOOBE.ps1'''
+}
+
 $OOBETasksCMD | Out-File -FilePath 'C:\Windows\System32\OOBE.CMD' -Encoding ascii -Force
 
 #=======================================================================
@@ -259,4 +320,4 @@ $UnattendXml = @'
     Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
     #=======================================================================
 
-Restart-Computer
+#Restart-Computer
