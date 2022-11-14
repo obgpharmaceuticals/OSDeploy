@@ -42,9 +42,7 @@ if (Test-Path $JsonPath) {
 # Start OOBE
 #=================================================
 Set-ExecutionPolicy ByPass -Force
-Set Path = %PATH%;C:\Program Files\WindowsPowerShell\Scripts
 Install-Module OSD -Force -Verbose
-
 
 #=================================================
 # Installing Windows Updates
