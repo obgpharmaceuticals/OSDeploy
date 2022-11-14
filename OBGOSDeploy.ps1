@@ -125,7 +125,7 @@ elseif($ImageLocation -eq "CloudCustom"){
 #  OS: Start-OSDCloud
 #=======================================================================
 
-Start-OSDCloud @Params
+#Start-OSDCloud @Params
 
 #=======================================================================
 #   PostOS: OOBE Staging
