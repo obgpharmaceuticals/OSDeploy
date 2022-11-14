@@ -88,7 +88,6 @@ if($ImageLocation -eq "Local"){
         SkipAutopilot = $true
         SkipODT = $true
         ZTI = $true
-        Restart = $true
         ImageFileUrl = $ImageURL 
         ImageIndex = $ImageIndex
         }
@@ -111,7 +110,6 @@ elseif($ImageLocation -eq "Cloud"){
             SkipAutopilot = $true
             SkipODT = $true
             ZTI = $true
-            Restart = $true
         }
 }
 elseif($ImageLocation -eq "CloudCustom"){
@@ -235,3 +233,5 @@ $UnattendXml = @'
     Write-Verbose -Verbose "Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath"
     Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
     #=======================================================================
+    
+    Restart-Computer -Force -Verbose
