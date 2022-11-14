@@ -1,12 +1,13 @@
+
 #=======================================================================
 #   PostOS: OOBE Staging
 #=======================================================================
 
-$OOBEDeployJson = @'
+$OOBEJson = @'
 {
-    "Autopilot":  {
-                      "IsPresent":  false
-                  },
+    "Updates":     [
+                    "KB5019959"
+                   ],
     "RemoveAppx":  [
                     "MicrosoftTeams",
                     "Microsoft.BingWeather",
@@ -17,8 +18,6 @@ $OOBEDeployJson = @'
                     "Microsoft.Messaging",
                     "Microsoft.MicrosoftOfficeHub",
                     "Microsoft.MicrosoftSolitaireCollection",
-                    "Microsoft.MicrosoftStickyNotes",
-                    "Microsoft.MSPaint",
                     "Microsoft.People",
                     "Microsoft.PowerAutomateDesktop",
                     "Microsoft.StorePurchaseApp",
@@ -41,6 +40,12 @@ $OOBEDeployJson = @'
                       },
     "UpdateWindows":  {
                           "IsPresent":  true
+                      },
+    "AutopilotOOBE":  {
+                          "IsPresent":  true
+                      }
+    "GroupTagID":     {
+                          $GroupTagID
                       }
 }
 '@
@@ -48,54 +53,22 @@ $OOBEDeployJson = @'
 If (!(Test-Path "C:\ProgramData\OSDeploy")) {
     New-Item "C:\ProgramData\OSDeploy" -ItemType Directory -Force | Out-Null
 }
-$OOBEDeployJson | Out-File -FilePath "C:\ProgramData\OSDeploy\OSDeploy.OOBEDeploy.json" -Encoding ascii -Force
+
+$OOBEJson | Out-File -FilePath "C:\ProgramData\OSDeploy\OOBE.json" -Encoding ascii -Force
 
 
-#=======================================================================
-#   PostOS: AutopilotOOBE Staging
-#=======================================================================
-$AutopilotOOBEJson = @'
-{
-    "Assign":  {
-                   "IsPresent":  true
-               },
-    "GroupTag":  "ProductivityDesktop",
-    "GroupTagOptions":  [
-                            "ProductivityDesktop",
-                            "ProductivityLaptop",
-                            "LineOfBusiness"
-                        ],
-    "Hidden":  [
-                   "AddToGroup",
-                   "AssignedComputerName",
-                   "AssignedUser",
-                   "PostAction"
-               ],
-    "PostAction":  "Quit",
-    "Run":  "NetworkingWireless",
-    "Docs":  "https://autopilotoobe.osdeploy.com/",
-    "Title":  "OBG Autopilot Registration"
-}
-'@
-$AutopilotOOBEJson | Out-File -FilePath "C:\ProgramData\OSDeploy\OSDeploy.AutopilotOOBE.json"
-
-
-#=======================================================================
-#   PostOS: OOBE Command Script
-#=======================================================================
 
 Write-Host -ForegroundColor Green "Create C:\Windows\System32\OOBE.CMD"
-$OOBETasksCMD = @'
+$OOBETasksCMD = @"
 PowerShell -NoL -Com Set-ExecutionPolicy RemoteSigned -Force
 Set Path = %PATH%;C:\Program Files\WindowsPowerShell\Scripts
-Start /Wait PowerShell -NoL -C Install-Module AutopilotOOBE -Force -Verbose
+$Transcript = "$((Get-Date).ToString('yyyy-MM-dd-HHmmss'))-OOBEDeploy.log"
+Start-Transcript -Path (Join-Path "$env:SystemRoot\Temp" $Transcript) -ErrorAction Ignore
 Start /Wait PowerShell -NoL -C Install-Module OSD -Force -Verbose
-Start /Wait PowerShell -NoL -C Start-AutopilotOOBE
-Start /Wait PowerShell -NoL -C Start-OOBEDeploy
-Start /Wait PowerShell -NoL -C Restart-Computer -Force
-'@
-$OOBETasksCMD | Out-File -FilePath 'C:\Windows\System32\OOBE.CMD' -Encoding ascii -Force
+Start /Wait PowerShell -NoL -C 'Invoke-WebPSScript https://raw.githubusercontent.com/obgpharmaceuticals/OSDeploy/main/OOBE.ps1'
+"@
 
+$OOBETasksCMD | Out-File -FilePath 'C:\Windows\System32\OOBE.CMD' -Encoding ascii -Force
 
 #=======================================================================
 # UnattendXml
@@ -115,10 +88,18 @@ $UnattendXml = @'
             <RunSynchronous>
                 <RunSynchronousCommand wcm:action="add">
                 <Order>1</Order>
+                <Description>Set ExecutionPolicy Bypass</Description>
+                <Path>PowerShell -WindowStyle Hidden -Command "Set-ExecutionPolicy Bypass -Force"</Path>
+                </RunSynchronousCommand>
+                <RunSynchronousCommand wcm:action="add">
+                <Order>2</Order>
                 <Description>OOBE</Description>
-                <Path>OOBE.cmd</Path>
+                <Path>oobe.cmd</Path>
                 </RunSynchronousCommand>
             </RunSynchronous>
+            <Reseal>
+                <Mode>OOBE</Mode>
+            </Reseal>
         </component>
     </settings>
 </unattend>
@@ -142,5 +123,4 @@ $UnattendXml = @'
     #=======================================================================
     Write-Verbose -Verbose "Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath"
     Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
-    Notepad $UnattendPath
     #=======================================================================
