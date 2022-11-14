@@ -131,7 +131,7 @@ Start-OSDCloud @Params
 #   PostOS: OOBE Staging
 #=======================================================================
 
-$OOBEJson = @'
+$OOBEJson = @"
 {
     "Updates":     [
                     "KB5019959"
@@ -166,17 +166,15 @@ $OOBEJson = @'
     "UpdateDrivers": false,
     "UpdateWindows": false,
     "AutopilotOOBE": true,
-    "GroupTagID": ""$GroupTagID""
+    "GroupTagID": "$GroupTagID"
 }
-'@
+"@
 
 If (!(Test-Path "C:\ProgramData\OSDeploy")) {
     New-Item "C:\ProgramData\OSDeploy" -ItemType Directory -Force | Out-Null
 }
 
 $OOBEJson | Out-File -FilePath "C:\ProgramData\OSDeploy\OOBE.json" -Encoding ascii -Force
-
-
 
 Write-Host -ForegroundColor Green "Create C:\Windows\System32\OOBE.CMD"
 $OOBETasksCMD = @"
