@@ -243,4 +243,4 @@ $UnattendXml = @'
     Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
     #=======================================================================
 
-#Restart-Computer
+Restart-Computer
