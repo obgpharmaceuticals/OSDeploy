@@ -1,3 +1,6 @@
+#=======================================================================
+#   Selection: Selection menu items
+#=======================================================================
 function Show-GroupTagMenu
 {
     param (
@@ -22,9 +25,8 @@ function Show-ImageMenu
     Write-Host "3: Custom - Cloud"
     Write-Host "4: Custom - Local"
 }
-
 #=======================================================================
-#   OS: Params and Start-OSDCloud
+#   Selection: Choose the type of system which is being deployed
 #=======================================================================
 
 $GroupTag = "NotSet"
@@ -44,6 +46,9 @@ do
      }
  }
  until ($GroupTag -ne "NotSet")
+#=======================================================================
+#   Selection: Image from the local repo or from MS cloud repo
+#=======================================================================
 
 $selection = "" 
 $ImageLocation = "NotSet"
@@ -74,6 +79,9 @@ If($ImageURL -eq "" -or $ImageURL -eq $null) {
     $ImageURL = $ImageURLDefault
 }
 
+#=======================================================================
+#   OS: Set up the OSD parameters for launch
+#=======================================================================
 
 if($ImageLocation -eq "Local"){
     $Params = @{
@@ -111,6 +119,9 @@ elseif($ImageLocation -eq "CloudCustom"){
             ZTI = $true
         }    
 }
+#=======================================================================
+#  OS: Start-OSDCloud
+#=======================================================================
 
 Start-OSDCloud @Params
 
@@ -169,7 +180,7 @@ Write-Host -ForegroundColor Green "Create C:\Windows\System32\OOBE.CMD"
 $OOBETasksCMD = @"
 PowerShell -NoL -Com Set-ExecutionPolicy RemoteSigned -Force
 Set Path = %PATH%;C:\Program Files\WindowsPowerShell\Scripts
-$Transcript = "$((Get-Date).ToString('yyyy-MM-dd-HHmmss'))-OOBEDeploy.log"
+`$Transcript = `$((Get-Date).ToString('yyyy-MM-dd-HHmmss'))-OOBEDeploy.log"
 Start-Transcript -Path (Join-Path "$env:SystemRoot\Temp" $Transcript) -ErrorAction Ignore
 Start /Wait PowerShell -NoL -C Install-Module OSD -Force -Verbose
 Start /Wait PowerShell -NoL -C 'Invoke-WebPSScript https://raw.githubusercontent.com/obgpharmaceuticals/OSDeploy/main/OOBE.ps1'
