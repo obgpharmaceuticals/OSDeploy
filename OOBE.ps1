@@ -37,13 +37,6 @@ if (Test-Path $JsonPath) {
     }
 }
 
-
-#=================================================
-# Start OOBE
-#=================================================
-Set-ExecutionPolicy ByPass -Force
-Install-Module OSD -Force -Verbose
-
 #=================================================
 # Installing Windows Updates
 #=================================================
