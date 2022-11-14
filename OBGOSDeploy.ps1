@@ -206,11 +206,6 @@ $UnattendXml = @'
             <RunSynchronous>
                 <RunSynchronousCommand wcm:action="add">
                 <Order>1</Order>
-                <Description>Set ExecutionPolicy Bypass</Description>
-                <Path>PowerShell -WindowStyle Hidden -Command "Set-ExecutionPolicy Bypass -Force"</Path>
-                </RunSynchronousCommand>
-                <RunSynchronousCommand wcm:action="add">
-                <Order>2</Order>
                 <Description>OOBE</Description>
                 <Path>oobe.cmd</Path>
                 </RunSynchronousCommand>
