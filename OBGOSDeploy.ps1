@@ -213,6 +213,8 @@ Write-Host -ForegroundColor Green "Create C:\Windows\System32\OOBE.CMD"
 $OOBETasksCMD = @"
 PowerShell -NoL -Com Set-ExecutionPolicy RemoteSigned -Force
 Set Path = %PATH%;C:\Program Files\WindowsPowerShell\Scripts
+$Transcript = "$((Get-Date).ToString('yyyy-MM-dd-HHmmss'))-OOBEDeploy.log"
+Start-Transcript -Path (Join-Path "$env:SystemRoot\Temp" $Transcript) -ErrorAction Ignore
 Start /Wait PowerShell -NoL -C Install-Module OSD -Force -Verbose
 "@
 
@@ -230,6 +232,29 @@ if ($UpdateDrivers){
     $OOBETasksCMD += 'Start /Wait PowerShell -NoL -C ''Install-WindowsUpdate -Install -AcceptAll -UpdateType Driver -MicrosoftUpdate -ForceDownload -ForceInstall -IgnoreReboot -ErrorAction SilentlyContinue -Verbose | Out-File c:\OSDCloud\Logs\Drivers_Install_1_$(get-date -f dd-MM-yyyy).log -Force'''
 }
 
+Write-Host -ForegroundColor Green "Create C:\Windows\System32\OOBE.CMD"
+$OOBETasksCMD = @"
+PowerShell -NoL -Com Set-ExecutionPolicy RemoteSigned -Force
+Set Path = %PATH%;C:\Program Files\WindowsPowerShell\Scripts
+`$Transcript = `$((Get-Date).ToString('yyyy-MM-dd-HHmmss'))-OOBEDeploy.log'
+Start-Transcript -Path (Join-Path '$env:SystemRoot\Temp' `$Transcript) -ErrorAction Ignore
+Start /Wait PowerShell -NoL -C Install-Module OSD -Force -Verbose
+"@
+
+if ($UpdateDrivers -or $UpdateWindows){
+    Write-Host -ForegroundColor DarkGray "========================================================================="
+    Write-Host -ForegroundColor Green "Installing PSWindowsUpdate"
+    $OOBETasksCMD += "`n"
+    $OOBETasksCMD += 'Start /Wait PowerShell -NoL -C Install-Module PSWindowsUpdate -Force -Verbose'
+}
+
+if ($UpdateDrivers){
+    
+    Write-Host -ForegroundColor Green "Driver Updates Enabled"
+    $OOBETasksCMD += "`n"
+    $OOBETasksCMD += 'Start /Wait PowerShell -NoL -C ''Install-WindowsUpdate -Install -AcceptAll -UpdateType Driver -MicrosoftUpdate -ForceDownload -ForceInstall -IgnoreReboot -ErrorAction SilentlyContinue -Verbose | Out-File $env:SystemRoot\Temp\Drivers_Install_1_$(get-date -f dd-MM-yyyy).log -Force'''
+}
+
 if ($UpdateWindows){
     Write-Host -ForegroundColor Green "Windows Updates Enabled"
     $OOBETasksCMD += "`n"
@@ -242,7 +267,7 @@ if ($UpdateWindows){
 
     $OOBETasksCMD += 'Start /Wait PowerShell -NoL -C ''Install-WindowsUpdate -KBArticleID' 
     $OOBETasksCMD += $array -join ", "
-    $OOBETasksCMD += '-AcceptAll -IgnoreReboot -ErrorAction SilentlyContinue -Verbose | Out-File c:\OSDCloud\Logs\Updates_Install_1_$(get-date -f dd-MM-yyyy).log -Force'''
+    $OOBETasksCMD += '-AcceptAll -IgnoreReboot -ErrorAction SilentlyContinue -Verbose | Out-File $env:SystemRoot\Temp\Updates_Install_1_$(get-date -f dd-MM-yyyy).log -Force'''
 }
 
 if ($RemoveAppx){
