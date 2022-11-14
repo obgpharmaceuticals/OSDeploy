@@ -43,8 +43,6 @@ if (Test-Path $JsonPath) {
 #=================================================
 Set-ExecutionPolicy ByPass -Force
 Set Path = %PATH%;C:\Program Files\WindowsPowerShell\Scripts
-$Transcript = $((Get-Date).ToString('yyyy-MM-dd-HHmmss'))-OOBEDeploy.log
-Start-Transcript -Path (Join-Path '$env:SystemRoot\Temp' `$Transcript) -ErrorAction Ignore
 Install-Module OSD -Force -Verbose
 
 
