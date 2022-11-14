@@ -91,7 +91,7 @@ if ($AutopilotOOBE){
     Write-Host "Add Computer to Autopilot"
     Write-Host "GroupTagID: $GroupTagID"
     Try {
-        Get-WindowsAutoPilotInfo.ps1 -GroupTag $GroupTagID -Online
+        Get-WindowsAutoPilotInfo.ps1 -GroupTag $GroupTagID -Online -Assign
         Write-Host "Successfully ran autopilot script"}
  
     Catch {
