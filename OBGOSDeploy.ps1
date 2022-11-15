@@ -204,6 +204,7 @@ $UnattendXml = @'
                 <Order>1</Order>
                 <Description>OOBE</Description>
                 <Path>oobe.cmd</Path>
+                <WillReboot>Always</WillReboot>
                 </RunSynchronousCommand>
             </RunSynchronous>
             <Reseal>
