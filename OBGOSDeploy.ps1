@@ -41,7 +41,7 @@ do
          } '2' {
              $GroupTag = "ProductivityLaptop"
          } '3' {
-             $GroupTag = "LineOfBusiness"
+             $GroupTag = "LineOfBusinessDesktop"
          }
      }
  }
