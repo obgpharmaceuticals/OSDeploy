@@ -103,7 +103,7 @@ elseif($ImageLocation -eq "LocalCustom"){
 elseif($ImageLocation -eq "Cloud"){
         $Params = @{
             OSVersion = "Windows 10"
-            OSBuild = "20H2"
+            OSBuild = "22H2"
             OSEdition = "Enterprise"
             OSLanguage = "en-gb"
             OSLicense = "Volume"
