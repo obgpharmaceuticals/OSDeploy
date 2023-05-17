@@ -161,7 +161,7 @@ $OOBEJson = @"
                     "Microsoft.ZuneMusic",
                     "Microsoft.ZuneVideo"
                    ],
-    "UpdateDrivers": true,
+    "UpdateDrivers": false,
     "UpdateWindows": true,
     "AutopilotOOBE": true,
     "GroupTagID": "$GroupTag"
