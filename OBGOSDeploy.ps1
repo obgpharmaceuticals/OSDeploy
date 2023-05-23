@@ -85,8 +85,6 @@ If($ImageURL -eq "" -or $ImageURL -eq $null) {
 
 if($ImageLocation -eq "Local"){
     $Params = @{
-        SkipAutopilot = $true
-        SkipODT = $true
         ZTI = $true
         ImageFileUrl = $ImageURL 
         ImageIndex = $ImageIndex
@@ -94,8 +92,6 @@ if($ImageLocation -eq "Local"){
 }
 elseif($ImageLocation -eq "LocalCustom"){
     $Params = @{
-        SkipAutopilot = $true
-        SkipODT = $true
         ZTI = $false
         ImageFileUrl = $ImageURL 
         }
@@ -107,24 +103,23 @@ elseif($ImageLocation -eq "Cloud"){
             OSEdition = "Enterprise"
             OSLanguage = "en-gb"
             OSLicense = "Volume"
-            SkipAutopilot = $true
-            SkipODT = $true
             ZTI = $true
         }
 }
 elseif($ImageLocation -eq "CloudCustom"){
         $Params = @{
-            SkipAutopilot = $true
-            SkipODT = $true
             ZTI = $false
         }    
 }
+
+$Params['SkipAutopilot'] = $true
+
 #=======================================================================
 #  OS: Start-OSDCloud
 #=======================================================================
 
 Write-Host "Press any key within 5 seconds to run 'Start-OSDCloudCLI', otherwise 'Start-OSDCloud' will be executed."
-$counter = 5
+$counter = 3
 
 while ($counter -gt 0) {
     Write-Host "`r$counter seconds remaining...`r" -NoNewline
@@ -138,6 +133,7 @@ if ([Console]::KeyAvailable) {
     Start-OSDCloudCLI @Params
 }
 else {
+    $Params['SkipODT'] = $true
     Write-Host "`nExecuting 'Start-OSDCloud'..."
     Start-OSDCloud @Params
 }
