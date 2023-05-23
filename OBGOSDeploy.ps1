@@ -123,7 +123,26 @@ elseif($ImageLocation -eq "CloudCustom"){
 #  OS: Start-OSDCloud
 #=======================================================================
 
-Start-OSDCloudCLI @Params
+Write-Host "Press any key within 5 seconds to run 'Start-OSDCloudCLI', otherwise 'Start-OSDCloud' will be executed."
+$counter = 5
+
+while ($counter -gt 0) {
+    Write-Host "`r$counter seconds remaining...`r" -NoNewline
+    Start-Sleep -Seconds 1
+    $counter--
+}
+
+if ([Console]::KeyAvailable) {
+    [Console]::ReadKey() | Out-Null
+    Write-Host "`nExecuting 'Start-OSDCloudCLI'..."
+    Start-OSDCloudCLI @Params
+}
+else {
+    Write-Host "`nExecuting 'Start-OSDCloud'..."
+    Start-OSDCloud @Params
+}
+
+#Start-OSDCloud @Params
 
 #=======================================================================
 #   PostOS: OOBE Staging
