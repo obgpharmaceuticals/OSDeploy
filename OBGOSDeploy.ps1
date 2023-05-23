@@ -119,24 +119,36 @@ $Params['SkipAutopilot'] = $true
 #=======================================================================
 
 Write-Host "Press any key within 5 seconds to run 'Start-OSDCloudCLI', otherwise 'Start-OSDCloud' will be executed."
-$counter = 3
+$counter = 5
 
-while ($counter -gt 0) {
+while ($counter -gt 0 -and -not [Console]::KeyAvailable) {
     Write-Host "`r$counter seconds remaining...`r" -NoNewline
     Start-Sleep -Seconds 1
     $counter--
 }
 
 if ([Console]::KeyAvailable) {
-    [Console]::ReadKey() | Out-Null
-    Write-Host "`nExecuting 'Start-OSDCloudCLI'..."
-    Start-OSDCloudCLI @Params
+    $key = [Console]::ReadKey($true).Key
+    if ($key -eq "C" -or $key -eq "c") {
+        Write-Host "`nExecuting 'Start-OSDCloudCLI'..."
+        Start-OSDCloudCLI @Params
+    }
+    elseif ($key -eq "G" -or $key -eq "g") {
+        Write-Host "`nExecuting 'Start-OSDCloudGUI'..."
+        Start-OSDCloudGUI
+    }
+    else {
+        $Params['SkipODT'] = $true
+        Write-Host "`nNo key pressed. Executing 'Start-OSDCloud'..."
+        Start-OSDCloud @Params
+    }
 }
 else {
     $Params['SkipODT'] = $true
-    Write-Host "`nExecuting 'Start-OSDCloud'..."
+    Write-Host "`nNo key pressed. Executing 'Start-OSDCloud'..."
     Start-OSDCloud @Params
 }
+
 
 #Start-OSDCloud @Params
 
