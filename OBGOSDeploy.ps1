@@ -123,7 +123,7 @@ elseif($ImageLocation -eq "CloudCustom"){
 #  OS: Start-OSDCloud
 #=======================================================================
 
-Start-OSDCloud @Params
+Start-OSDCloudCLI @Params
 
 #=======================================================================
 #   PostOS: OOBE Staging
@@ -132,7 +132,6 @@ Start-OSDCloud @Params
 $OOBEJson = @"
 {
     "Updates":     [
-                    "KB5019959"
                    ],
     "RemoveAppx":  [
                     "MicrosoftTeams",
