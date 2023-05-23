@@ -135,7 +135,7 @@ if ([Console]::KeyAvailable) {
     }
     elseif ($key -eq "G" -or $key -eq "g") {
         Write-Host "`nExecuting 'Start-OSDCloudGUI'..."
-        Start-OSDCloudGUI
+        Start-OSDCloudGUI @Params
     }
     else {
         $Params['SkipODT'] = $true
