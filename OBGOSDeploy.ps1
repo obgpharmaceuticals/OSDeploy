@@ -153,6 +153,7 @@ else{
     if($ImageLocation -eq "Local"){
         $Params = @{
             ZTI = $true
+            SkipAutopilot = $true
             ImageFileUrl = $ImageURL
             ImageIndex = $ImageIndex
             }
@@ -160,6 +161,7 @@ else{
     elseif($ImageLocation -eq "LocalCustom"){
         $Params = @{
             ZTI = $false
+            SkipAutopilot = $true
             ImageFileUrl = $ImageURL 
             }
     }
@@ -171,16 +173,16 @@ else{
                 OSLanguage = "en-gb"
                 OSLicense = "Volume"
                 ZTI = $true
+                SkipAutopilot = $true
             }
     }
     elseif($ImageLocation -eq "CloudCustom"){
             $Params = @{
                 ZTI = $false
+                SkipAutopilot = $true
             }    
     }
 }
-
-$Params['SkipAutopilot'] = $true
 
 #=======================================================================
 #  OS: Start-OSDCloud
@@ -319,5 +321,4 @@ if ($RebootFlag -eq $true) {
 else {
     Write-Host "`nManual reboot required now"
 }
-
 
