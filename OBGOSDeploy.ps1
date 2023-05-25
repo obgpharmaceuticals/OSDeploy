@@ -193,7 +193,7 @@ if ($OSDCloud -eq "GUI") {
     Start-OSDCloudGUI
 }
 elseif ($OSDCloud -eq "CLI") {
-    Write-Host "`nExecuting 'Start-OSDCloudGUI'..."
+    Write-Host "`nExecuting 'Start-OSDCloudCLI'..."
     Start-OSDCloudCLI @Params
 }
 else{
