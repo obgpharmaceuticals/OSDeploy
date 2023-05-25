@@ -69,54 +69,9 @@ do
  until ($GroupTag -ne "NotSet")
 
 #=======================================================================
-#   Selection: Which OSD Cloud to use
-#=======================================================================
-
-$selection = ""
-$OSDCloud = "NotSet"
-
-do
-{
-    Show-OSDMenu
-    $selection = Read-Host "Please make a selection"
-    switch ($selection)
-    {
-        '1' {
-            $OSDCloud = "OSD"
-        } '2' {
-            $OSDCloud = "CLI"
-        } '3' {
-            $OSDCloud = "GUI"
-        }
-    }
-}
-until ($OSDCloud -ne "NotSet")
-
-#=======================================================================
-#   Selection: Reboot on complete?
-#=======================================================================
-
-$RebootFlag = $true
-
-Show-RebootMenu
-$selection = Read-Host "Reboot on complete?"
-switch ($selection)
-{
-    '1' {
-        $RebootFlag = $true
-    } '2' {
-        $RebootFlag = $false
-    }
-}
-
-#=======================================================================
 #   Selection: Image from the local repo or from MS cloud repo
 #=======================================================================
 
-if($OSDCloud -eq "GUI"){
-             
-}
-else{
 
     $selection = ""
     $ImageLocation = "NotSet"
@@ -140,29 +95,17 @@ else{
     If($ImageURL -eq "" -or $ImageURL -eq $null) {
         $ImageURL = $ImageURLDefault
     }
-}
 
 #=======================================================================
 #   OS: Set up the OSD parameters for launch
 #=======================================================================
 
-if($OSDCloud -eq "GUI"){
-             
-}
-else{
     if($ImageLocation -eq "Local"){
         $Params = @{
             ZTI = $true
             SkipAutopilot = $true
             ImageFileUrl = $ImageURL
             ImageIndex = $ImageIndex
-            }
-    }
-    elseif($ImageLocation -eq "LocalCustom"){
-        $Params = @{
-            ZTI = $false
-            SkipAutopilot = $true
-            ImageFileUrl = $ImageURL 
             }
     }
     elseif($ImageLocation -eq "Cloud"){
@@ -176,32 +119,12 @@ else{
                 SkipAutopilot = $true
             }
     }
-    elseif($ImageLocation -eq "CloudCustom"){
-            $Params = @{
-                ZTI = $false
-                SkipAutopilot = $true
-            }    
-    }
-}
 
 #=======================================================================
 #  OS: Start-OSDCloud
 #=======================================================================
 
-if ($OSDCloud -eq "GUI") {
-    Write-Host "`nExecuting 'Start-OSDCloudGUI'..."
-    Start-OSDCloudGUI
-}
-elseif ($OSDCloud -eq "CLI") {
-    Write-Host "`nExecuting 'Start-OSDCloudCLI'..."
-    Start-OSDCloudCLI @Params
-}
-else{
-    $Params['SkipODT'] = $true
-    Write-Host "`nExecuting 'Start-OSDCloud'..."
-    Start-OSDCloud @Params
-}
-
+Start-OSDCloud @Params
 
 #=======================================================================
 #   PostOS: OOBE Staging
@@ -312,13 +235,7 @@ $UnattendXml = @'
     Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
     #=======================================================================
     
-    
-    
-if ($RebootFlag -eq $true) {
+     
     Write-Host "`nRebooting Now"
     Restart-Computer -Force -Verbose
-}
-else {
-    Write-Host "`nManual reboot required now"
-}
 
