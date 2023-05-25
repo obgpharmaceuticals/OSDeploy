@@ -21,8 +21,8 @@ function Show-ImageMenu
     Write-Host "================ $Title ================"
     
     Write-Host "1: Local"
-    Write-Host "2: Cloud 22H2"
-    Write-Host "3: Cloud 20H2"
+    Write-Host "2: Cloud"
+    Write-Host "3: Cloud New CLI"
 }
 
 function Show-RebootMenu
@@ -76,9 +76,9 @@ do
                 $ImageLocation = "Local"
                 $ImageIndex = 3
             } '2' {
-                $ImageLocation = "Cloud 22H2"
+                $ImageLocation = "Cloud"
             } '3' {
-                $ImageLocation = "Cloud 20H2"
+                $ImageLocation = "CloudNewCLI"
             } 
         }
     }
@@ -100,7 +100,7 @@ do
             ImageIndex = $ImageIndex
             }
     }
-    elseif($ImageLocation -eq "Cloud 22H2"){
+    elseif($ImageLocation -eq "Cloud"){
             $Params = @{
                 OSName = "Windows 10 22H2 x64"
                 OSEdition = "Enterprise"
@@ -110,9 +110,9 @@ do
                 SkipAutopilot = $true
             }
     }
-    elseif($ImageLocation -eq "Cloud 20H2"){
+    elseif($ImageLocation -eq "CloudNewCLI"){
             $Params = @{
-                OSName = "Windows 10 20H2 x64"
+                OSName = "Windows 10 22H2 x64"
                 OSEdition = "Enterprise"
                 OSLanguage = "en-gb"
                 OSLicense = "Volume"
@@ -124,8 +124,14 @@ do
 #=======================================================================
 #  OS: Start-OSDCloud
 #=======================================================================
-
-Start-OSDCloud @Params
+if($ImageLocation -eq "CloudNewCLI"){
+    Start-OSDCloud @Params
+    Invoke-OSDCloud
+}
+else
+{
+    Start-OSDCloud @Params
+}
 
 #=======================================================================
 #   PostOS: OOBE Staging
