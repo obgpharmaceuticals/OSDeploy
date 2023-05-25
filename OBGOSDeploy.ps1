@@ -1,7 +1,7 @@
 #=======================================================================
 #   Selection: Selection menu items
 #=======================================================================
-function Show-GroupTagMenu
+function Show-GroupTagMenu 
 {
     param (
         [string]$Title = 'Computer Type'
