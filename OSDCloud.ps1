@@ -144,7 +144,7 @@ function Invoke-OSDCloud {
             ZTI = [bool]$false
         }
         #endregion
-
+pause
         #region Set Pre-Merge Defaults
         #Skip Recovery Partition for Virtual Machines
         if ($Global:OSDCloud.IsVirtualMachine) {
