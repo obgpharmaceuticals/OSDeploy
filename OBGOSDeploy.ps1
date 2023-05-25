@@ -22,7 +22,8 @@ function Show-ImageMenu
     
     Write-Host "1: Local"
     Write-Host "2: Cloud"
-    Write-Host "3: Cloud New CLI"
+    Write-Host "3: Local New CLI"
+    Write-Host "4: Cloud New CLI"
 }
 
 function Show-RebootMenu
@@ -94,10 +95,10 @@ do
 
     if($ImageLocation -eq "Local"){
         $Params = @{
-            ZTI = $true
-            SkipAutopilot = $true
-            ImageFileUrl = $ImageURL
-            ImageIndex = $ImageIndex
+                ZTI = $true
+                SkipAutopilot = $true
+                ImageFileUrl = $ImageURL
+                ImageIndex = $ImageIndex
             }
     }
     elseif($ImageLocation -eq "Cloud"){
@@ -108,6 +109,14 @@ do
                 OSLicense = "Volume"
                 ZTI = $true
                 SkipAutopilot = $true
+            }
+    }
+    elseif($ImageLocation -eq "LocalNewCLI"){
+            $Params = @{
+                ZTI = $true
+                SkipAutopilot = $true
+                ImageFileUrl = $ImageURL
+                ImageIndex = $ImageIndex
             }
     }
     elseif($ImageLocation -eq "CloudNewCLI"){
@@ -124,7 +133,7 @@ do
 #=======================================================================
 #  OS: Start-OSDCloud
 #=======================================================================
-if($ImageLocation -eq "CloudNewCLI"){
+if($ImageLocation -eq "CloudNewCLI" -or $ImageLocation -eq "LocalNewCLI"){
     Write-Host "Starting OSD Cloud CLI"
     Start-OSDCloudCLI @Params
     Invoke-OSDCloud
