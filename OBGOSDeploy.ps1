@@ -198,7 +198,6 @@ else{
     $Params['SkipODT'] = $true
     Write-Host "`nExecuting 'Start-OSDCloud'..."
     Start-OSDCloud @Params
-    }
 }
 
 
