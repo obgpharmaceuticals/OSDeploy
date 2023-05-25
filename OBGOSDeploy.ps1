@@ -79,6 +79,9 @@ do
             } '2' {
                 $ImageLocation = "Cloud"
             } '3' {
+                $ImageLocation = "LocalNewCLI"
+                $ImageIndex = 3
+            } '4' {
                 $ImageLocation = "CloudNewCLI"
             } 
         }
