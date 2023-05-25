@@ -20,10 +20,31 @@ function Show-ImageMenu
     )
     Write-Host "================ $Title ================"
     
-    Write-Host "1: Standard - Cloud"
-    Write-Host "2: Standard - Local"
-    Write-Host "3: Custom - Cloud"
-    Write-Host "4: Custom - Local"
+    Write-Host "1: Cloud"
+    Write-Host "2: Local"
+}
+
+function Show-RebootMenu
+{
+    param (
+        [string]$Title = 'Reboot on Complete?'
+    )
+    Write-Host "================ $Title ================"
+    
+    Write-Host "1: Yes"
+    Write-Host "2: No"
+}
+
+function Show-OSDMenu
+{
+    param (
+        [string]$Title = 'OSD to Use'
+    )
+    Write-Host "================ $Title ================"
+    
+    Write-Host "1: OSDCloud"
+    Write-Host "2: OSDCloudCLI"
+    Write-Host "3: OSDCloudGUI"
 }
 #=======================================================================
 #   Selection: Choose the type of system which is being deployed
@@ -46,70 +67,117 @@ do
      }
  }
  until ($GroupTag -ne "NotSet")
+
 #=======================================================================
-#   Selection: Image from the local repo or from MS cloud repo
+#   Selection: Which OSD Cloud to use
 #=======================================================================
 
-$selection = "" 
-$ImageLocation = "NotSet"
-$ImageURLDefault = "http://10.1.100.25/install.wim"
+$selection = ""
+$OSDCloud = "NotSet"
+
 do
 {
-    Show-ImageMenu
+    Show-OSDMenu
     $selection = Read-Host "Please make a selection"
     switch ($selection)
     {
         '1' {
-            $ImageLocation = "Cloud"
+            $OSDCloud = "OSD"
         } '2' {
-            $ImageLocation = "Local"
-            $ImageIndex = 3
+            $OSDCloud = "CLI"
         } '3' {
-            $ImageLocation = "CloudCustom"
-            $ImageURL = Read-Host "Enter image URL"
-        } '4' {
-            $ImageLocation = "LocalCustom"
-            $ImageURL = Read-Host "Enter image URL"
+            $OSDCloud = "GUI"
         }
     }
 }
-until ($ImageLocation -ne "NotSet")
+until ($OSDCloud -ne "NotSet")
 
-If($ImageURL -eq "" -or $ImageURL -eq $null) {
-    $ImageURL = $ImageURLDefault
+#=======================================================================
+#   Selection: Reboot on complete?
+#=======================================================================
+
+$RebootFlag = $true
+
+Show-RebootMenu
+$selection = Read-Host "Reboot on complete?"
+switch ($selection)
+{
+    '1' {
+        $RebootFlag = $true
+    } '2' {
+        $RebootFlag = $false
+    }
+}
+
+#=======================================================================
+#   Selection: Image from the local repo or from MS cloud repo
+#=======================================================================
+
+if($OSDCloud -eq "GUI"){
+             
+}
+else{
+
+    $selection = ""
+    $ImageLocation = "NotSet"
+    $ImageURLDefault = "http://10.1.100.25/install.wim"
+    do
+    {
+        Show-ImageMenu
+        $selection = Read-Host "Please make a selection"
+        switch ($selection)
+        {
+            '1' {
+                $ImageLocation = "Cloud"
+            } '2' {
+                $ImageLocation = "Local"
+                $ImageIndex = 3
+            }
+        }
+    }
+    until ($ImageLocation -ne "NotSet")
+
+    If($ImageURL -eq "" -or $ImageURL -eq $null) {
+        $ImageURL = $ImageURLDefault
+    }
 }
 
 #=======================================================================
 #   OS: Set up the OSD parameters for launch
 #=======================================================================
 
-if($ImageLocation -eq "Local"){
-    $Params = @{
-        ZTI = $true
-        ImageFileUrl = $ImageURL 
-        ImageIndex = $ImageIndex
-        }
+if($OSDCloud -eq "GUI"){
+             
 }
-elseif($ImageLocation -eq "LocalCustom"){
-    $Params = @{
-        ZTI = $false
-        ImageFileUrl = $ImageURL 
-        }
-}
-elseif($ImageLocation -eq "Cloud"){
+else{
+    if($ImageLocation -eq "Local"){
         $Params = @{
-            OSVersion = "Windows 10"
-            OSBuild = "22H2"
-            OSEdition = "Enterprise"
-            OSLanguage = "en-gb"
-            OSLicense = "Volume"
             ZTI = $true
-        }
-}
-elseif($ImageLocation -eq "CloudCustom"){
+            ImageFileUrl = $ImageURL
+            ImageIndex = $ImageIndex
+            }
+    }
+    elseif($ImageLocation -eq "LocalCustom"){
         $Params = @{
             ZTI = $false
-        }    
+            ImageFileUrl = $ImageURL 
+            }
+    }
+    elseif($ImageLocation -eq "Cloud"){
+            $Params = @{
+                OSVersion = "Windows 10"
+                OSBuild = "22H2"
+                OSEdition = "Enterprise"
+                OSLanguage = "en-gb"
+                OSLicense = "Volume"
+                ZTI = $true
+            }
+    }
+    elseif($ImageLocation -eq "CloudCustom"){
+            $Params = @{
+                ZTI = $false
+            }    
+    }
 }
 
 $Params['SkipAutopilot'] = $true
@@ -118,39 +186,21 @@ $Params['SkipAutopilot'] = $true
 #  OS: Start-OSDCloud
 #=======================================================================
 
-Write-Host "Press any key within 5 seconds to run 'Start-OSDCloudCLI', otherwise 'Start-OSDCloud' will be executed."
-$counter = 5
-
-while ($counter -gt 0 -and -not [Console]::KeyAvailable) {
-    Write-Host "`r$counter seconds remaining...`r" -NoNewline
-    Start-Sleep -Seconds 1
-    $counter--
+if ($OSDCloud -eq "GUI") {
+    Write-Host "`nExecuting 'Start-OSDCloudGUI'..."
+    Start-OSDCloudGUI
 }
-
-if ([Console]::KeyAvailable) {
-    $key = [Console]::ReadKey($true).Key
-    if ($key -eq "C" -or $key -eq "c") {
-        Write-Host "`nExecuting 'Start-OSDCloudCLI'..."
-        Start-OSDCloudCLI @Params
-    }
-    elseif ($key -eq "G" -or $key -eq "g") {
-        Write-Host "`nExecuting 'Start-OSDCloudGUI'..."
-        Start-OSDCloudGUI @Params
-    }
-    else {
-        $Params['SkipODT'] = $true
-        Write-Host "`nNo key pressed. Executing 'Start-OSDCloud'..."
-        Start-OSDCloud @Params
-    }
+elseif ($OSDCloud -eq "CLI") {
+    Write-Host "`nExecuting 'Start-OSDCloudGUI'..."
+    Start-OSDCloudCLI @Params
 }
-else {
+else{
     $Params['SkipODT'] = $true
-    Write-Host "`nNo key pressed. Executing 'Start-OSDCloud'..."
+    Write-Host "`nExecuting 'Start-OSDCloud'..."
     Start-OSDCloud @Params
+    }
 }
 
-
-#Start-OSDCloud @Params
 
 #=======================================================================
 #   PostOS: OOBE Staging
@@ -261,4 +311,14 @@ $UnattendXml = @'
     Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
     #=======================================================================
     
+    
+    
+if ($RebootFlag -eq $true) {
+    Write-Host "`nRebooting Now"
     Restart-Computer -Force -Verbose
+}
+else {
+    Write-Host "`nManual reboot required now"
+}
+
+
