@@ -20,8 +20,9 @@ function Show-ImageMenu
     )
     Write-Host "================ $Title ================"
     
-    Write-Host "1: Cloud"
-    Write-Host "2: Local"
+    Write-Host "1: Local"
+    Write-Host "2: Cloud 22H2"
+    Write-Host "3: Cloud 20H2"
 }
 
 function Show-RebootMenu
@@ -35,17 +36,6 @@ function Show-RebootMenu
     Write-Host "2: No"
 }
 
-function Show-OSDMenu
-{
-    param (
-        [string]$Title = 'OSD to Use'
-    )
-    Write-Host "================ $Title ================"
-    
-    Write-Host "1: OSDCloud"
-    Write-Host "2: OSDCloudCLI"
-    Write-Host "3: OSDCloudGUI"
-}
 #=======================================================================
 #   Selection: Choose the type of system which is being deployed
 #=======================================================================
@@ -83,11 +73,13 @@ do
         switch ($selection)
         {
             '1' {
-                $ImageLocation = "Cloud"
-            } '2' {
                 $ImageLocation = "Local"
                 $ImageIndex = 3
-            }
+            } '2' {
+                $ImageLocation = "Cloud 22H2"
+            } '3' {
+                $ImageLocation = "Cloud 20H2"
+            } 
         }
     }
     until ($ImageLocation -ne "NotSet")
@@ -108,9 +100,19 @@ do
             ImageIndex = $ImageIndex
             }
     }
-    elseif($ImageLocation -eq "Cloud"){
+    elseif($ImageLocation -eq "Cloud 22H2"){
             $Params = @{
                 OSName = "Windows 10 22H2 x64"
+                OSEdition = "Enterprise"
+                OSLanguage = "en-gb"
+                OSLicense = "Volume"
+                ZTI = $true
+                SkipAutopilot = $true
+            }
+    }
+    elseif($ImageLocation -eq "Cloud 20H2"){
+            $Params = @{
+                OSName = "Windows 10 20H2 x64"
                 OSEdition = "Enterprise"
                 OSLanguage = "en-gb"
                 OSLicense = "Volume"
