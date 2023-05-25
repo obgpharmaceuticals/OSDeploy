@@ -110,6 +110,7 @@ do
     }
     elseif($ImageLocation -eq "Cloud"){
             $Params = @{
+                OSName = "Windows 10 22H2 x64"
                 OSVersion = "Windows 10"
                 OSBuild = "22H2"
                 OSEdition = "Enterprise"
