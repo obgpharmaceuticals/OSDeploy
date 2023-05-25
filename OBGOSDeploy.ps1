@@ -125,7 +125,7 @@ do
 #  OS: Start-OSDCloud
 #=======================================================================
 if($ImageLocation -eq "CloudNewCLI"){
-    Start-OSDCloud @Params
+    Start-OSDCloudCLI @Params
     Invoke-OSDCloud
 }
 else
