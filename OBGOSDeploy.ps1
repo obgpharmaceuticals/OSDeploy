@@ -20,21 +20,10 @@ function Show-ImageMenu
     )
     Write-Host "================ $Title ================"
     
-    Write-Host "1: Local"
-    Write-Host "2: Cloud"
-    Write-Host "3: Local Custom (Microsoft Update Catalog Drivers)"
-    Write-Host "4: Cloud New CLI"
-}
-
-function Show-RebootMenu
-{
-    param (
-        [string]$Title = 'Reboot on Complete?'
-    )
-    Write-Host "================ $Title ================"
-    
-    Write-Host "1: Yes"
-    Write-Host "2: No"
+    Write-Host "1: Local 22H2"
+    Write-Host "2: Cloud 22H2"
+    Write-Host "3: Local 20H2"
+    Write-Host "4: Cloud 20H2"
 }
 
 #=======================================================================
@@ -66,7 +55,6 @@ do
 
     $selection = ""
     $ImageLocation = "NotSet"
-    $ImageURLDefault = "http://10.1.100.25/install.wim"
     do
     {
         Show-ImageMenu
@@ -76,21 +64,21 @@ do
             '1' {
                 $ImageLocation = "Local"
                 $ImageIndex = 3
+                $ImageURL = "http://10.1.100.25/install.wim"
             } '2' {
                 $ImageLocation = "Cloud"
+                $OS = "Windows 10 22H2 x64"
             } '3' {
-                $ImageLocation = "CC1"
+                $ImageLocation = "Local"
                 $ImageIndex = 3
+                $ImageURL = "http://10.1.100.25/20h2.wim"
             } '4' {
-                $ImageLocation = "CloudNewCLI"
+                $ImageLocation = "Cloud"
+                $OS = "Windows 10 20H2 x64"
             } 
         }
     }
     until ($ImageLocation -ne "NotSet")
-
-    If($ImageURL -eq "" -or $ImageURL -eq $null) {
-        $ImageURL = $ImageURLDefault
-    }
 
 #=======================================================================
 #   OS: Set up the OSD parameters for launch
@@ -98,81 +86,29 @@ do
 
     if($ImageLocation -eq "Local"){
         $Params = @{
-                ZTI = $true
-                SkipAutopilot = $true
-                ImageFileUrl = $ImageURL
-                ImageIndex = $ImageIndex
-            }
+            ZTI = $true
+            SkipAutopilot = $true
+            ImageFileUrl = $ImageURL
+            ImageIndex = $ImageIndex
+        }
     }
     elseif($ImageLocation -eq "Cloud"){
-            $Params = @{
-                OSName = "Windows 10 22H2 x64"
-                OSEdition = "Enterprise"
-                OSLanguage = "en-gb"
-                OSLicense = "Volume"
-                ZTI = $true
-                SkipAutopilot = $true
-            }
-    }
-    elseif($ImageLocation -eq "CC1"){
-            $OSName = "Windows 10 22H2 x64"
-            $OSActivation = "Volume"
-            $OSLanguage = "en-gb"
-            $OSEdition = "Enterprise"
-            $Global:StartOSDCloudCLI = [ordered]@{
-                LaunchMethod = 'OSDCloudCLI'
-                ComputerManufacturer = (Get-MyComputerManufacturer -Brief)
-                ComputerModel = (Get-MyComputerModel)
-                ComputerProduct = (Get-MyComputerProduct)
-                DriverPackName = 'Microsoft Update Catalog'
-                ImageFileUrl = "http://10.1.100.25/install.wim"
-                OSImageIndex = 3
-                IsOnBattery = Get-OSDGather -Property IsOnBattery
-                MSCatalogDiskDrivers = $true
-                MSCatalogFirmware = $true
-                MSCatalogNetDrivers = $true
-                MSCatalogScsiDrivers = $true
-                OperatingSystem = Get-OSDCloudOperatingSystems | Where-Object {$_.Name -match $OSName} | Where-Object {$_.Activation -eq $OSActivation} | Where-Object {$_.Language -eq $OSLanguage}
-                OSEdition = $OSEdition
-                OSLanguage = $OSLanguage
-                OSActivation = $OSActivation
-                OSName = $OSName
-                Restart = $false
-                ScreenshotCapture = $false
-                Shutdown = $false
-                SkipAutopilot = $true
-                TimeStart = Get-Date
-                ZTI = $true
-            }          
-    }
-    elseif($ImageLocation -eq "CloudNewCLI"){
-            $Params = @{
-                OSName = "Windows 10 22H2 x64"
-                OSEdition = "Enterprise"
-                OSLanguage = "en-gb"
-                OSLicense = "Volume"
-                ZTI = $true
-                SkipAutopilot = $true
-            }
+        $Params = @{
+            OSName = $OS
+            OSEdition = "Enterprise"
+            OSLanguage = "en-gb"
+            OSLicense = "Volume"
+            ZTI = $true
+            SkipAutopilot = $true
+        }
     }
 
 #=======================================================================
 #  OS: Start-OSDCloud
 #=======================================================================
-if($ImageLocation -eq "CloudNewCLI"){
-    Write-Host "Starting OSD Cloud CLI"
-    Start-OSDCloudCLI @Params
-    Invoke-OSDCloud
-}
-elseif($ImageLocation -eq "CC1"){
-    Write-Host "Manual Invoke OSD Cloud"
-    Invoke-OSDCloud
-}
-else
-{
-    Write-Host "Starting OSD Cloud"
-    Start-OSDCloud @Params
-}
+
+Write-Host "Starting OSD Cloud"
+Start-OSDCloud @Params
 
 #=======================================================================
 #   PostOS: OOBE Staging
