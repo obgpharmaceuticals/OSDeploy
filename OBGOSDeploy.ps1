@@ -118,10 +118,6 @@ do
             $Params = @{
                 ZTI = $true
                 SkipAutopilot = $true
-                OSName = "Windows 10 22H2 x64"
-                OSEdition = "Enterprise"
-                OSLanguage = "en-gb"
-                OSLicense = "Volume"
                 ImageFileUrl = $ImageURL
                 ImageIndex = $ImageIndex
             }
