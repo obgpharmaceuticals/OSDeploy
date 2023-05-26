@@ -124,6 +124,7 @@ do
                 ComputerManufacturer = (Get-MyComputerManufacturer -Brief)
                 ComputerModel = (Get-MyComputerModel)
                 ComputerProduct = (Get-MyComputerProduct)
+                DriverPackName = 'None'
                 IsOnBattery = Get-OSDGather -Property IsOnBattery
                 MSCatalogDiskDrivers = $true
                 MSCatalogFirmware = $true
