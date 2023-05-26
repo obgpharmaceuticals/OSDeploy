@@ -22,7 +22,7 @@ function Show-ImageMenu
     
     Write-Host "1: Local"
     Write-Host "2: Cloud"
-    Write-Host "3: Local New CLI"
+    Write-Host "3: Cloud Custom (No Driver Packs)"
     Write-Host "4: Cloud New CLI"
 }
 
@@ -79,7 +79,7 @@ do
             } '2' {
                 $ImageLocation = "Cloud"
             } '3' {
-                $ImageLocation = "LocalNewCLI"
+                $ImageLocation = "CC1"
                 $ImageIndex = 3
             } '4' {
                 $ImageLocation = "CloudNewCLI"
@@ -114,13 +114,33 @@ do
                 SkipAutopilot = $true
             }
     }
-    elseif($ImageLocation -eq "LocalNewCLI"){
-            $Params = @{
-                ZTI = $true
+    elseif($ImageLocation -eq "CC1"){
+            $OSName = "Windows 10 22H2 x64"
+            $OSActivation = "Volume"
+            $OSLanguage = "en-gb"
+            $OSEdition = "Enterprise"
+            $Global:StartOSDCloudCLI = [ordered]@{
+                LaunchMethod = 'OSDCloudCLI'
+                ComputerManufacturer = (Get-MyComputerManufacturer -Brief)
+                ComputerModel = (Get-MyComputerModel)
+                ComputerProduct = (Get-MyComputerProduct)
+                IsOnBattery = Get-OSDGather -Property IsOnBattery
+                MSCatalogDiskDrivers = $true
+                MSCatalogFirmware = $true
+                MSCatalogNetDrivers = $true
+                MSCatalogScsiDrivers = $true
+                OperatingSystem = Get-OSDCloudOperatingSystems | Where-Object {$_.Name -match $OSName} | Where-Object {$_.Activation -eq $OSActivation} | Where-Object {$_.Language -eq $OSLanguage}
+                OSEdition = $OSEdition
+                OSLanguage = $OSLanguage
+                OSActivation = $OSActivation
+                OSName = $OSName
+                Restart = $false
+                ScreenshotCapture = $false
+                Shutdown = $false
                 SkipAutopilot = $true
-                ImageFileUrl = $ImageURL
-                ImageIndex = $ImageIndex
-            }
+                TimeStart = Get-Date
+                ZTI = $true
+            }          
     }
     elseif($ImageLocation -eq "CloudNewCLI"){
             $Params = @{
@@ -136,9 +156,13 @@ do
 #=======================================================================
 #  OS: Start-OSDCloud
 #=======================================================================
-if($ImageLocation -eq "CloudNewCLI" -or $ImageLocation -eq "LocalNewCLI"){
+if($ImageLocation -eq "CloudNewCLI"){
     Write-Host "Starting OSD Cloud CLI"
     Start-OSDCloudCLI @Params
+    Invoke-OSDCloud
+}
+elseif($ImageLocation -eq "CC1"){
+    Write-Host "Manual Invoke OSD Cloud"
     Invoke-OSDCloud
 }
 else
