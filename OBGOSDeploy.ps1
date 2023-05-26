@@ -20,10 +20,11 @@ function Show-ImageMenu
     )
     Write-Host "================ $Title ================"
     
-    Write-Host "1: Local 22H2"
-    Write-Host "2: Cloud 22H2"
-    Write-Host "3: Local 20H2"
-    Write-Host "4: Cloud 20H2"
+    Write-Host "1: Local Windows 10 22H2"
+    Write-Host "2: Cloud Windows 10 22H2"
+    Write-Host "3: Local Windows 10 20H2"
+    Write-Host "4: Cloud Windows 10 20H2"
+    Write-Host "5: Cloud Windows 11 22H2"
 }
 
 #=======================================================================
@@ -75,6 +76,9 @@ do
             } '4' {
                 $ImageLocation = "Cloud"
                 $OS = "Windows 10 20H2 x64"
+            } '5' {
+                $ImageLocation = "Cloud"
+                $OS = "Windows 11 22H2 x64"
             } 
         }
     }
