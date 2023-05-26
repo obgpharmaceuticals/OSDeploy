@@ -126,6 +126,7 @@ do
                 ComputerProduct = (Get-MyComputerProduct)
                 DriverPackName = 'None'
                 ImageFileUrl = "http://10.1.100.25/install.wim"
+                OSImageIndex = 3
                 IsOnBattery = Get-OSDGather -Property IsOnBattery
                 MSCatalogDiskDrivers = $true
                 MSCatalogFirmware = $true
