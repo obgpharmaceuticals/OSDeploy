@@ -22,7 +22,7 @@ function Show-ImageMenu
     
     Write-Host "1: Local"
     Write-Host "2: Cloud"
-    Write-Host "3: Cloud Custom (No Driver Packs)"
+    Write-Host "3: Local Custom (No Driver Packs)"
     Write-Host "4: Cloud New CLI"
 }
 
