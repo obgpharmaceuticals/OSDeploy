@@ -22,7 +22,7 @@ function Show-ImageMenu
     
     Write-Host "1: Local"
     Write-Host "2: Cloud"
-    Write-Host "3: Local Custom (No Driver Packs)"
+    Write-Host "3: Local Custom (Microsoft Update Catalog Drivers)"
     Write-Host "4: Cloud New CLI"
 }
 
@@ -124,7 +124,7 @@ do
                 ComputerManufacturer = (Get-MyComputerManufacturer -Brief)
                 ComputerModel = (Get-MyComputerModel)
                 ComputerProduct = (Get-MyComputerProduct)
-                DriverPackName = 'None'
+                DriverPackName = 'Microsoft Update Catalog'
                 ImageFileUrl = "http://10.1.100.25/install.wim"
                 OSImageIndex = 3
                 IsOnBattery = Get-OSDGather -Property IsOnBattery
