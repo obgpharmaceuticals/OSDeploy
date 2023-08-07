@@ -65,14 +65,14 @@ do
             '1' {
                 $ImageLocation = "Local"
                 $ImageIndex = 3
-                $ImageURL = "http://10.1.100.25/install.wim"
+                $ImageURL = "http://10.1.190.10/install.wim"
             } '2' {
                 $ImageLocation = "Cloud"
                 $OS = "Windows 10 22H2 x64"
             } '3' {
                 $ImageLocation = "Local"
                 $ImageIndex = 3
-                $ImageURL = "http://10.1.100.25/20h2.wim"
+                $ImageURL = "http://10.1.190.10/20h2.wim"
             } '4' {
                 $ImageLocation = "Cloud"
                 $OS = "Windows 10 21H2 x64"
