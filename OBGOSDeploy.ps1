@@ -91,6 +91,8 @@ do
     if($ImageLocation -eq "Local"){
         $Params = @{
             ZTI = $true
+            OSVersion = "Windows 10"
+            OSBuild = "21H2"
             SkipAutopilot = $true
             ImageFileUrl = $ImageURL
             ImageIndex = $ImageIndex
