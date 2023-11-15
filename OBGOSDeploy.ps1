@@ -91,6 +91,10 @@ do
     if($ImageLocation -eq "Local"){
         $Params = @{
             ZTI = $true
+            OSName = $OS
+            OSEdition = "Enterprise"
+            OSLanguage = "en-gb"
+            OSLicense = "Volume"
             SkipAutopilot = $true
             ImageFileUrl = $ImageURL
             ImageIndex = $ImageIndex
