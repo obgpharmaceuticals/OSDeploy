@@ -65,7 +65,6 @@ do
             '1' {
                 $ImageLocation = "Local"
                 $ImageIndex = 3
-                $OS = "Windows 10 22H2 x64"
                 $ImageURL = "http://10.1.190.10/install.wim"
             } '2' {
                 $ImageLocation = "Cloud"
@@ -92,10 +91,6 @@ do
     if($ImageLocation -eq "Local"){
         $Params = @{
             ZTI = $true
-            OSName = $OS
-            OSEdition = "Enterprise"
-            OSLanguage = "en-gb"
-            OSLicense = "Volume"
             SkipAutopilot = $true
             ImageFileUrl = $ImageURL
             ImageIndex = $ImageIndex
@@ -117,7 +112,7 @@ do
 #=======================================================================
 
 Write-Host "Starting OSD Cloud"
-Start-OSDCloud @Params
+Start-OSDCloudGUI
 
 #=======================================================================
 #   PostOS: OOBE Staging
