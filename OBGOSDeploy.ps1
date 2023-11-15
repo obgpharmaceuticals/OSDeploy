@@ -65,6 +65,7 @@ do
             '1' {
                 $ImageLocation = "Local"
                 $ImageIndex = 3
+                $OS = "Windows 10 22H2 x64"
                 $ImageURL = "http://10.1.190.10/install.wim"
             } '2' {
                 $ImageLocation = "Cloud"
