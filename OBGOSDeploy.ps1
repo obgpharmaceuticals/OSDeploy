@@ -112,7 +112,7 @@ do
 #=======================================================================
 
 Write-Host "Starting OSD Cloud"
-Start-OSDCloudGUI
+Start-OSDCloud @Params
 
 #=======================================================================
 #   PostOS: OOBE Staging
