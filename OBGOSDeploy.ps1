@@ -114,9 +114,7 @@ do
 
 Write-Host "Starting OSD Cloud"
 # Start-OSDCloud @Params
-$OSDModuleResource.StartOSDCloudGUI.OSName = 'Windows 10 22H2 x64'
-$OSDModuleResource.StartOSDCloudGUI.OSVersion = 'Windows 10'
-Start-OSDCloudGUI
+Start-OSDCloudGUI -OSName 'Windows 10 22H2 x64' -OSVersion 'Windows 10'
 #=======================================================================
 #   PostOS: OOBE Staging
 #=======================================================================
