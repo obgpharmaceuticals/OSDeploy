@@ -165,7 +165,6 @@ $OOBEJson | Out-File -FilePath "C:\ProgramData\OSDeploy\OOBE.json" -Encoding asc
 
 Write-Host -ForegroundColor Green "Create C:\Windows\System32\OOBE.CMD"
 $OOBETasksCMD = @"
-start-job { Set-ExecutionPolicy Unrestricted } -RunAs32 | wait-job | Receive-Job
 PowerShell -NoL -Com Set-ExecutionPolicy RemoteSigned -Force
 Set Path = %PATH%;C:\Program Files\WindowsPowerShell\Scripts
 Start /Wait PowerShell -NoL -C Install-Module OSD -Force -Verbose
