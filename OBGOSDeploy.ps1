@@ -157,9 +157,11 @@ $OOBEJson = @"
 }
 "@
 
-If (!(Test-Path "C:\ProgramData\OSDeploy")) {
-    New-Item "C:\ProgramData\OSDeploy" -ItemType Directory -Force | Out-Null
-}
+#If (!(Test-Path "C:\ProgramData\OSDeploy")) {
+    
+New-Item "C:\ProgramData\OSDeploy" -ItemType Directory -Force | Out-Null
+
+#}
 
 $OOBEJson | Out-File -FilePath "C:\ProgramData\OSDeploy\OOBE.json" -Encoding ascii -Force
 
