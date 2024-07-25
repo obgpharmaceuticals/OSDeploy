@@ -1,7 +1,7 @@
 Write-Host -ForegroundColor DarkGray "========================================================================="
 Write-Host -ForegroundColor Green "Start OOBE"
 $ProgramDataOSDeploy = "$env:ProgramData\OSDeploy"
-$JsonPath = "$ProgramData\OSDeploy\OOBE.json"
+$JsonPath = "$ProgramDataOSDeploy\OOBE.json"
 #=================================================
 # Transcript
 #=================================================
