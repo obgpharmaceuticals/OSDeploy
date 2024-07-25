@@ -159,7 +159,7 @@ $OOBEJson = @"
 
 If (!(Test-Path "C:\ProgramData\OSDeploy")) {
     
-New-Item "C:\ProgramData\OSDeploy" -ItemType Directory -Force | Out-Null
+New-Item "C:\ProgramData\OSDeploy" -ItemType Directory -Force
 
 }
 
