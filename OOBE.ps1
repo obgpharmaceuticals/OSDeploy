@@ -97,4 +97,4 @@ if ($AutopilotOOBE){
     Catch {
         Write-Host "Error: Something went wrong. Unable to run autopilot script"
     Break }
-}
+}Start-Sleep -Seconds 120
