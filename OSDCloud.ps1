@@ -101,7 +101,7 @@ function Invoke-OSDCloud {
             ODTTargetData = 'C:\OSDCloud\ODT\Office'
             OperatingSystems = [array](Get-OSDCloudOperatingSystems)
             OSActivation = $null
-            OSBuild = $null
+            OSBuild = 19045.4957
             OSBuildMenu = $null
             OSBuildNames = $null
             OSEdition = $null
