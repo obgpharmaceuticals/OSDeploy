@@ -104,7 +104,7 @@ do
             OSLanguage = "en-gb"
             OSLicense = "Volume"
             ZTI = $true
-            SkipAutopilot = $true
+#            SkipAutopilot = $true
         }
     }
 
