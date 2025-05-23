@@ -24,21 +24,21 @@ Write-Host "Group Tag set to: $GroupTag" -ForegroundColor Green
 
 # Configure OSDCloud deployment settings
 $OSDCloudConfig = @{
-    OSVersion        = "Windows 11"
-    OSEdition        = "Enterprise"
-    OSBuild          = "23H2"
-    OSLanguage       = "en-us"
-    OSImageIndex     = 6
-    OSLicense        = "Retail"
-    ZtdJoin          = "AAD"          
-    ZtdGroupTag      = $GroupTag         
-    ZtdSkipPrivacy   = $true
-    ZtdSkipEULA      = $true
-    ZtdSkipKeyboard  = $true
-    ZtdOOBESkip      = $false
-   # OOBEDeploy       = $true
-    SkipAutopilot    = $false
-   # FirmwareType     = "UEFI"
+    -OSVersion        = "Windows 11"
+    -OSEdition        = "Enterprise"
+    -OSBuild          = "23H2"
+    -OSLanguage       = "en-us"
+    -OSImageIndex     = 6
+    -OSLicense        = "Retail"
+    -ZtdJoin          = "AAD"          
+    -ZtdGroupTag      = $GroupTag         
+    -ZtdSkipPrivacy   = $true
+    -ZtdSkipEULA      = $true
+    -ZtdSkipKeyboard  = $true
+    -ZtdOOBESkip      = $false
+    -OOBEDeploy       = $true
+    -SkipAutopilot    = $false
+    -FirmwareType     = "UEFI"
 }
 
 # Confirm action
