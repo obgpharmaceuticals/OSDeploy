@@ -30,14 +30,14 @@ $OSDCloudConfig = @{
     OSLanguage       = "en-us"
     OSImageIndex     = 6
     OSLicense        = "Retail"
-    SkipAutopilot    = $false
-    ZtdGroupTag      = $GroupTag
+    ZtdJoin          = "AAD"             # Enable Autopilot
+    ZtdGroupTag      = $GroupTag         # ✅ Correct property name
     ZtdSkipPrivacy   = $true
     ZtdSkipEULA      = $true
-    ZtdJoin          = "AAD"
     ZtdSkipKeyboard  = $true
     ZtdOOBESkip      = $false
     OOBEDeploy       = $true
+    SkipAutopilot    = $false
     FirmwareType     = "UEFI"
 }
 
