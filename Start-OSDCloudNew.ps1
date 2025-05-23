@@ -37,7 +37,7 @@ $OSDCloudConfig = @{
     ZtdSkipKeyboard  = $true
     ZtdOOBESkip      = $false
     OOBEDeploy       = $true
-    SkipAutopilot    = $false
+    SkipAutopilot    = $true
     FirmwareType     = "UEFI"
 }
 
