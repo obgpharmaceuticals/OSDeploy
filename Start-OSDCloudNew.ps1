@@ -52,4 +52,4 @@ Initialize-Disk -Number 0 -PartitionStyle GPT
 New-Partition -DiskNumber 0 -UseMaximumSize -AssignDriveLetter | Format-Volume -FileSystem NTFS -NewFileSystemLabel "OSDisk" -Confirm:$false
 
 # Start the cloud deployment
-Start-OSDCloud @OSDCloudConfig
+Start-OSDCloud @OSDCloudConfig -verbose
