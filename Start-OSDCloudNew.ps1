@@ -15,7 +15,7 @@ switch ($DeviceType) {
     '2' { $GroupTag = 'ProductivityLaptop' }
     '3' { $GroupTag = 'LineOfBusinessDesktop' }
     default {
-        Write-Host "❌ Invalid selection. Defaulting to 'Productivity-Desktop'"
+        Write-Host "❌ Invalid selection. Defaulting to 'ProductivityDesktop'"
         $GroupTag = 'ProductivityDesktop'
     }
 }
