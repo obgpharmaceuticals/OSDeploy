@@ -11,12 +11,12 @@ Write-Host "🌐 Starting OSDCloud Deployment..." -ForegroundColor Cyan
 $DeviceType = Read-Host "Enter device type: (1) Productivity Desktop, (2) Productivity Laptop, (3) Line of Business"
 
 switch ($DeviceType) {
-    '1' { $GroupTag = 'Productivity-Desktop' }
-    '2' { $GroupTag = 'Productivity-Laptop' }
-    '3' { $GroupTag = 'Line-of-Business' }
+    '1' { $GroupTag = 'ProductivityDesktop' }
+    '2' { $GroupTag = 'ProductivityLaptop' }
+    '3' { $GroupTag = 'LineOfBusinessDesktop' }
     default {
         Write-Host "❌ Invalid selection. Defaulting to 'Productivity-Desktop'"
-        $GroupTag = 'Productivity-Desktop'
+        $GroupTag = 'ProductivityDesktop'
     }
 }
 
