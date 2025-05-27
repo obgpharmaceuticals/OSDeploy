@@ -30,13 +30,8 @@ $OSDCloudConfig = @{
     OSLicense      = "Volume"
     ZtdJoin          = "AAD"          
     ZtdGroupTag      = $GroupTag         
-    ZtdSkipPrivacy   = $true
-    ZtdSkipEULA      = $true
-    ZtdSkipKeyboard  = $true
-    ZtdOOBESkip      = $false
     OOBEDeploy       = $true
     SkipAutopilot    = $false
-    FirmwareType     = "UEFI"
 }
 
 # Confirm action
