@@ -29,9 +29,6 @@ $OSDCloudConfig = @{
     OSLanguage     = "en-us"
     OSLicense      = "Volume"
     ZtdJoin          = "AAD"          
-    ZtdGroupTag      = $GroupTag         
-    OOBEDeploy       = $true
-    SkipAutopilot    = $false
 }
 
 # Confirm action
