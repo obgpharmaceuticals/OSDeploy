@@ -31,14 +31,14 @@ $OSDCloudConfig = @{
 }
 
 # Confirm action
-Write-Host "`nThis will wipe Disk 0 and deploy Windows 11 with Autopilot enrollment!" -ForegroundColor Yellow
+# Write-Host "`nThis will wipe Disk 0 and deploy Windows 11 with Autopilot enrollment!" -ForegroundColor Yellow
 # Read-Host "Press [ENTER] to continue..."
 
 # Wipe and partition Disk 0
-Write-Host "Wiping Disk 0..." -ForegroundColor Red
-Clear-Disk -Number 0 -RemoveData -Confirm:$false
-Initialize-Disk -Number 0 -PartitionStyle GPT
-New-Partition -DiskNumber 0 -UseMaximumSize -AssignDriveLetter | Format-Volume -FileSystem NTFS -NewFileSystemLabel "OSDisk" -Confirm:$false
+# Write-Host "Wiping Disk 0..." -ForegroundColor Red
+# Clear-Disk -Number 0 -RemoveData -Confirm:$false
+# Initialize-Disk -Number 0 -PartitionStyle GPT
+# New-Partition -DiskNumber 0 -UseMaximumSize -AssignDriveLetter | Format-Volume -FileSystem NTFS -NewFileSystemLabel "OSDisk" -Confirm:$false
 
 # Start the cloud deployment
 # Read-Host "Ready to install, press a key"
