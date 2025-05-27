@@ -27,8 +27,7 @@ $OSDCloudConfig = @{
     OSName         = "Windows 11 23H2 x64"
     OSEdition      = "Enterprise"
     OSLanguage     = "en-us"
-    OSLicense      = "Volume"
-    ZtdJoin        = "AAD"          
+    OSLicense      = "Volume"        
 }
 
 # Confirm action
