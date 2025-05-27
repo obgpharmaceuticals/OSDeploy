@@ -42,5 +42,5 @@ New-Partition -DiskNumber 0 -UseMaximumSize -AssignDriveLetter | Format-Volume -
 
 # Start the cloud deployment
 # Read-Host "Ready to install, press a key"
-Start-OSDCloud @OSDCloudConfig
+Start-OSDCloud -Config $OSDCloudConfig -Force -SkipWipeConfirm
 Read-Host "Finished, please press a key" 
