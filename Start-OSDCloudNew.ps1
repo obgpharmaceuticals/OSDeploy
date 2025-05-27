@@ -24,12 +24,9 @@ Write-Host "Group Tag set to: $GroupTag" -ForegroundColor Green
 
 # Configure OSDCloud deployment settings
 $OSDCloudConfig = @{
-    OSVersion      = "Windows 11"
+    OSName         = "Windows 11 23H2 x64"
     OSEdition      = "Enterprise"
-    OSBuild        = "23H2"
     OSLanguage     = "en-us"
-    OSImageIndex   = 6
-    FirmwareType   = "UEFI"
     OSLicense      = "Volume"
 }
 
