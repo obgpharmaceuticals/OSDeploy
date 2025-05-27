@@ -42,5 +42,5 @@ $OSDCloudConfig = @{
 
 # Start the cloud deployment
 # Read-Host "Ready to install, press a key"
-Start-OSDCloud -Config $OSDCloudConfig
+Start-OSDCloud @OSDCloudConfig
 Read-Host "Finished, please press a key" 
