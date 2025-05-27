@@ -28,7 +28,7 @@ $OSDCloudConfig = @{
     OSEdition      = "Enterprise"
     OSLanguage     = "en-us"
     OSLicense      = "Volume"
-    ZtdJoin          = "AAD"          
+    ZtdJoin        = "AAD"          
 }
 
 # Confirm action
