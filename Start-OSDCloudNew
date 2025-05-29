@@ -1,3 +1,6 @@
+Write-Host -ForegroundColor Cyan "Starting Deploy-Windows11 script..."
+Start-Sleep -Seconds 3
+
 #==================== GroupTag Selection ====================
 function Show-GroupTagMenu {
     Write-Host "`n================ Select Computer Type ================"
@@ -194,3 +197,6 @@ Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
 
 Write-Host "`nDeployment staging complete. Rebooting..." -ForegroundColor Green
 Restart-Computer -Force
+
+Write-Host -ForegroundColor Yellow "Script complete. Press any key to continue..."
+$x = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
