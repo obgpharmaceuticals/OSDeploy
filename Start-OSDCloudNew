@@ -1,17 +1,11 @@
-#=======================================================================
-#   Windows 11 OSDCloud Deployment Script with OOBEW11 Integration
-#=======================================================================
-
-# Function to show Group Tag menu
+#==================== GroupTag Selection ====================
 function Show-GroupTagMenu {
-    param ([string]$Title = 'Computer Type')
-    Write-Host "================ $Title ================"
+    Write-Host "`n================ Select Computer Type ================"
     Write-Host "1: Productivity Desktop"
     Write-Host "2: Productivity Laptop"
     Write-Host "3: Line of Business"
 }
 
-# Prompt for GroupTag selection
 $GroupTag = "NotSet"
 do {
     Show-GroupTagMenu
@@ -23,25 +17,19 @@ do {
     }
 } until ($GroupTag -ne "NotSet")
 
-#=======================================================================
-#   OS: Configure parameters for latest Windows 11 Cloud deployment
-#=======================================================================
-
+#==================== Setup OSDCloud Parameters ====================
 $Params = @{
-    OSName     = "Windows 11 23H2 x64"
+    OSName     = "Windows 11 x64"
     OSEdition  = "Enterprise"
     OSLanguage = "en-gb"
     OSLicense  = "Volume"
     ZTI        = $true
 }
 
-Write-Host "Starting OSDCloud"
-Start-OSDCloudGUI
+Write-Host "`nStarting OSDCloud with Windows 11..." -ForegroundColor Cyan
+Start-OSDCloud @Params
 
-#=======================================================================
-#   OOBEW11 Configuration
-#=======================================================================
-
+#==================== Write OOBEW11.json ====================
 $OOBEJson = @"
 {
     "Updates": [],
@@ -79,32 +67,113 @@ $OOBEJson = @"
 }
 "@
 
-$OSDeployPath = "C:\ProgramData\OSDeploy"
-if (!(Test-Path $OSDeployPath)) {
-    New-Item $OSDeployPath -ItemType Directory -Force
+$ProgramDataPath = "C:\ProgramData\OSDeploy"
+if (!(Test-Path $ProgramDataPath)) {
+    New-Item -ItemType Directory -Path $ProgramDataPath -Force | Out-Null
 }
-$OOBEJson | Out-File -FilePath "$OSDeployPath\OOBEW11.json" -Encoding ascii -Force
+$OOBEJson | Out-File "$ProgramDataPath\OOBEW11.json" -Encoding ascii -Force
 
-# Create OOBEW11.CMD
-Write-Host -ForegroundColor Green "Create C:\Windows\System32\OOBEW11.CMD"
-$OOBETasksCMD = @"
+#==================== Create OOBEW11.ps1 ====================
+$OOBEScript = @'
+Write-Host -ForegroundColor DarkGray "========================================================================="
+Write-Host -ForegroundColor Green "Start OOBE"
+
+$ProgramDataOSDeploy = "$env:ProgramData\OSDeploy"
+$JsonPath = "$ProgramDataOSDeploy\OOBEW11.json"
+
+# Transcript Logging
+$Transcript = "$((Get-Date).ToString('yyyy-MM-dd-HHmmss'))-OOBEW11.log"
+Start-Transcript -Path "$env:SystemRoot\Temp\$Transcript" -ErrorAction Ignore
+$host.ui.RawUI.WindowTitle = "Running Start-OOBEDeploy $env:SystemRoot\Temp\$Transcript"
+
+# Load JSON Config
+if (Test-Path $JsonPath) {
+    Write-Host -ForegroundColor Cyan "Importing Configuration: $JsonPath"
+    $ImportOOBE = Get-Content -Raw -Path $JsonPath | ConvertFrom-Json
+    $ImportOOBE.PSObject.Properties | ForEach-Object {
+        if ($_.Value -match 'IsPresent=True') { $_.Value = $true }
+        if ($_.Value -match 'IsPresent=False') { $_.Value = $false }
+        if ($null -eq $_.Value) { return }
+        Set-Variable -Name $_.Name -Value $_.Value -Force
+    }
+}
+
+# Skip BIOS/Firmware Updates
+$env:DISABLE_FIRMWARE_UPDATE = "1"
+
+# Install PSWindowsUpdate if needed
+if ($UpdateDrivers -or $UpdateWindows) {
+    Install-Module PSWindowsUpdate -Force -Verbose
+}
+
+# Driver Updates
+if ($UpdateDrivers) {
+    Install-WindowsUpdate -Install -AcceptAll -UpdateType Driver -MicrosoftUpdate `
+        -IgnoreReboot -ForceDownload -ForceInstall -ErrorAction SilentlyContinue
+}
+
+# Windows Updates
+if ($UpdateWindows -and $Updates) {
+    foreach ($item in $Updates) {
+        Install-WindowsUpdate -KBArticleID $item -AcceptAll -IgnoreReboot -ErrorAction SilentlyContinue
+    }
+}
+
+# Remove AppX
+if ($RemoveAppx) {
+    foreach ($app in $RemoveAppx) {
+        Write-Host "Removing $app"
+        Remove-AppxOnline $app
+    }
+}
+
+# Autopilot Registration
+if ($AutopilotOOBE) {
+    Install-Script Get-WindowsAutoPilotInfo -Force -Verbose
+    Try {
+        Get-WindowsAutoPilotInfo.ps1 -GroupTag $GroupTagID -Online -Assign
+    } Catch {
+        Write-Host "Autopilot failed"
+    }
+}
+
+Start-Sleep -Seconds 120
+'@
+
+$OOBEScript | Out-File 'C:\ProgramData\OSDeploy\OOBEW11.ps1' -Encoding ascii -Force
+
+#==================== Create OOBEW11.CMD ====================
+$OOBECmd = @"
 PowerShell -NoL -Com Set-ExecutionPolicy RemoteSigned -Force
-Set Path = %PATH%;C:\Program Files\WindowsPowerShell\Scripts
-Start /Wait PowerShell -NoL -C `"`$script = Invoke-WebRequest -Uri https://raw.githubusercontent.com/obgpharmaceuticals/OSDeploy/main/OOBEW11.ps1 -UseBasicParsing; Invoke-Expression `$script.Content`""
+Start /Wait PowerShell -NoL -C Install-Module OSD -Force -Verbose
+Start /Wait PowerShell -NoL -C C:\ProgramData\OSDeploy\OOBEW11.ps1
 "@
-$OOBETasksCMD | Out-File -FilePath 'C:\Windows\System32\OOBEW11.CMD' -Encoding ascii -Force
+$OOBECmd | Out-File 'C:\Windows\System32\OOBEW11.CMD' -Encoding ascii -Force
 
-# Create unattend.xml to trigger OOBE on boot
+#==================== Setup Unattend.xml ====================
 $UnattendXml = @'
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
+    <settings pass="oobeSystem">
+        <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <Reseal>
+                <Mode>Audit</Mode>
+            </Reseal>
+        </component>
+    </settings>
     <settings pass="auditUser">
-        <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+        <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <RunSynchronous>
                 <RunSynchronousCommand wcm:action="add">
                     <Order>1</Order>
                     <Description>OOBEW11</Description>
-                    <Path>OOBEW11.cmd</Path>
+                    <Path>OOBEW11.CMD</Path>
                     <WillReboot>Always</WillReboot>
                 </RunSynchronousCommand>
             </RunSynchronous>
@@ -116,13 +185,12 @@ $UnattendXml = @'
 </unattend>
 '@
 
-$Panther = 'C:\Windows\Panther'
-if (-not (Test-Path $Panther)) {
-    New-Item -Path $Panther -ItemType Directory -Force
+$UnattendPath = "C:\Windows\Panther\Unattend.xml"
+if (!(Test-Path 'C:\Windows\Panther')) {
+    New-Item -Path 'C:\Windows\Panther' -ItemType Directory -Force | Out-Null
 }
-$UnattendPath = "$Panther\Unattend.xml"
 $UnattendXml | Out-File -FilePath $UnattendPath -Encoding utf8 -Force
 Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
 
-Write-Host "\nRebooting Now"
-Restart-Computer -Force -Verbose
+Write-Host "`nDeployment staging complete. Rebooting..." -ForegroundColor Green
+Restart-Computer -Force
