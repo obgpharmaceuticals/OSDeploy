@@ -1,0 +1,128 @@
+#=======================================================================
+#   Windows 11 OSDCloud Deployment Script with OOBEW11 Integration
+#=======================================================================
+
+# Function to show Group Tag menu
+function Show-GroupTagMenu {
+    param ([string]$Title = 'Computer Type')
+    Write-Host "================ $Title ================"
+    Write-Host "1: Productivity Desktop"
+    Write-Host "2: Productivity Laptop"
+    Write-Host "3: Line of Business"
+}
+
+# Prompt for GroupTag selection
+$GroupTag = "NotSet"
+do {
+    Show-GroupTagMenu
+    $selection = Read-Host "Please make a selection"
+    switch ($selection) {
+        '1' { $GroupTag = "ProductivityDesktop" }
+        '2' { $GroupTag = "ProductivityLaptop" }
+        '3' { $GroupTag = "LineOfBusinessDesktop" }
+    }
+} until ($GroupTag -ne "NotSet")
+
+#=======================================================================
+#   OS: Configure parameters for latest Windows 11 Cloud deployment
+#=======================================================================
+
+$Params = @{
+    OSName     = "Windows 11 23H2 x64"
+    OSEdition  = "Enterprise"
+    OSLanguage = "en-gb"
+    OSLicense  = "Volume"
+    ZTI        = $true
+}
+
+Write-Host "Starting OSDCloud"
+Start-OSDCloudGUI
+
+#=======================================================================
+#   OOBEW11 Configuration
+#=======================================================================
+
+$OOBEJson = @"
+{
+    "Updates": [],
+    "RemoveAppx": [
+        "MicrosoftTeams",
+        "Microsoft.BingWeather",
+        "Microsoft.BingNews",
+        "Microsoft.GamingApp",
+        "Microsoft.GetHelp",
+        "Microsoft.Getstarted",
+        "Microsoft.Messaging",
+        "Microsoft.MicrosoftOfficeHub",
+        "Microsoft.MicrosoftSolitaireCollection",
+        "Microsoft.People",
+        "Microsoft.PowerAutomateDesktop",
+        "Microsoft.StorePurchaseApp",
+        "Microsoft.Todos",
+        "microsoft.windowscommunicationsapps",
+        "Microsoft.WindowsFeedbackHub",
+        "Microsoft.WindowsMaps",
+        "Microsoft.WindowsSoundRecorder",
+        "Microsoft.Xbox.TCUI",
+        "Microsoft.XboxGameOverlay",
+        "Microsoft.XboxGamingOverlay",
+        "Microsoft.XboxIdentityProvider",
+        "Microsoft.XboxSpeechToTextOverlay",
+        "Microsoft.YourPhone",
+        "Microsoft.ZuneMusic",
+        "Microsoft.ZuneVideo"
+    ],
+    "UpdateDrivers": true,
+    "UpdateWindows": true,
+    "AutopilotOOBE": true,
+    "GroupTagID": "$GroupTag"
+}
+"@
+
+$OSDeployPath = "C:\ProgramData\OSDeploy"
+if (!(Test-Path $OSDeployPath)) {
+    New-Item $OSDeployPath -ItemType Directory -Force
+}
+$OOBEJson | Out-File -FilePath "$OSDeployPath\OOBEW11.json" -Encoding ascii -Force
+
+# Create OOBEW11.CMD
+Write-Host -ForegroundColor Green "Create C:\Windows\System32\OOBEW11.CMD"
+$OOBETasksCMD = @"
+PowerShell -NoL -Com Set-ExecutionPolicy RemoteSigned -Force
+Set Path = %PATH%;C:\Program Files\WindowsPowerShell\Scripts
+Start /Wait PowerShell -NoL -C `"`$script = Invoke-WebRequest -Uri https://raw.githubusercontent.com/obgpharmaceuticals/OSDeploy/main/OOBEW11.ps1 -UseBasicParsing; Invoke-Expression `$script.Content`""
+"@
+$OOBETasksCMD | Out-File -FilePath 'C:\Windows\System32\OOBEW11.CMD' -Encoding ascii -Force
+
+# Create unattend.xml to trigger OOBE on boot
+$UnattendXml = @'
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+    <settings pass="auditUser">
+        <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+            <RunSynchronous>
+                <RunSynchronousCommand wcm:action="add">
+                    <Order>1</Order>
+                    <Description>OOBEW11</Description>
+                    <Path>OOBEW11.cmd</Path>
+                    <WillReboot>Always</WillReboot>
+                </RunSynchronousCommand>
+            </RunSynchronous>
+            <Reseal>
+                <Mode>OOBE</Mode>
+            </Reseal>
+        </component>
+    </settings>
+</unattend>
+'@
+
+$Panther = 'C:\Windows\Panther'
+if (-not (Test-Path $Panther)) {
+    New-Item -Path $Panther -ItemType Directory -Force
+}
+$UnattendPath = "$Panther\Unattend.xml"
+$UnattendXml | Out-File -FilePath $UnattendPath -Encoding utf8 -Force
+Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
+
+Write-Host "\nRebooting Now"
+Restart-Computer -Force -Verbose
