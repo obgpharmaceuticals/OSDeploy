@@ -1,4 +1,4 @@
-Write-Host "Start Process"
+Write-Host "Start Process New"
 
 try {
     # Prompt for Group Tag
