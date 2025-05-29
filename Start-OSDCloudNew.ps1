@@ -32,7 +32,6 @@ $OSDCloudConfig = @{
 
     # Autopilot / AAD Join
     ZtdJoin        = $true
-    ZtdJoinType    = "AAD"
     ZtdGroupTag    = $GroupTag
 }
 
