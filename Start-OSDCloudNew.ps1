@@ -28,8 +28,6 @@ $OSDCloudConfig = @{
     OSEdition      = "Enterprise"
     OSLanguage     = "en-us"
     OSLicense      = "Volume"
-    ZtdJoin        = $true
-    ZtdJoinType    = "AAD"
     ZtdGroupTag    = $GroupTag
 }
 
