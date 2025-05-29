@@ -29,9 +29,6 @@ $OSDCloudConfig = @{
     OSLanguage     = "en-us"
     OSLicense      = "Volume"
     ImageIndex     = 6
-
-    # Autopilot / AAD Join
-    ZtdJoin        = $true
     ZtdGroupTag    = $GroupTag
 }
 
