@@ -196,7 +196,7 @@ $UnattendXml | Out-File -FilePath $UnattendPath -Encoding utf8 -Force
 Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
 
 Write-Host "`nDeployment staging complete. Rebooting..." -ForegroundColor Green
-Restart-Computer -Force
+# Restart-Computer -Force
 
 Write-Host -ForegroundColor Yellow "Script complete. Press any key to continue..."
 $x = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
