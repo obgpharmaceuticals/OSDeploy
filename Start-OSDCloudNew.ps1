@@ -1,3 +1,4 @@
+Write-Host "Start Process"
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
