@@ -40,7 +40,7 @@ if (-not $OS) {
     Write-Error "Could not locate a suitable Windows 11 image. Check your internet connection and OSDCloud module."
     exit 1
 }
-
+write-host "OS Pickup"
 #=======================================================================
 #   Define OSDCloud Parameters
 #=======================================================================
