@@ -25,8 +25,8 @@ New-PSDrive -Name "Z" -PSProvider FileSystem -Root "\\10.1.192.20\Win11_24H2" -C
 
 #==================== Start OSDCloud from Custom WIM ====================
 $Params = @{
-    OSName     = "Windows 11 Enterprise"
-    OSEdition  = "Enterprise"
+    OSName     = "Windows 11 Pro"
+    OSEdition  = "Pro"
     OSLanguage = "en-gb"
     OSLicense  = "Volume"
     ZTI        = $true
