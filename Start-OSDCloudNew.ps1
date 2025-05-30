@@ -1,4 +1,4 @@
-Write-Host "Start Process New"
+Write-Host "Start Process New1"
 
 #==================== Computer Type Selection ====================
 $GroupTag = "NotSet"
@@ -17,7 +17,7 @@ do {
 
 #==================== Map Network Share ====================
 $SmbUser = "osduser"
-$SmbPassword = "YourSecurePassword"  # Replace with actual password
+$SmbPassword = "osduser"  # Replace with actual password
 $SecurePass = ConvertTo-SecureString $SmbPassword -AsPlainText -Force
 $Cred = New-Object System.Management.Automation.PSCredential ($SmbUser, $SecurePass)
 
