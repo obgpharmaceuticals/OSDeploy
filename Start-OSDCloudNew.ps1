@@ -1,9 +1,6 @@
 Write-Host "Start Process New"
 
-#=======================================================================
-#   Selection: Choose the type of system which is being deployed
-#=======================================================================
-
+#==================== Computer Type Selection ====================
 $GroupTag = "NotSet"
 do {
     Write-Host "================ Computer Type ================"
@@ -18,70 +15,57 @@ do {
     }
 } until ($GroupTag -ne "NotSet")
 
-#=======================================================================
-#   Mount ISO from network share (authenticated)
-#=======================================================================
-
+#==================== Map Network Share ====================
 $SmbUser = "osduser"
 $SmbPassword = "YourSecurePassword"  # Replace with actual password
 $SecurePass = ConvertTo-SecureString $SmbPassword -AsPlainText -Force
 $Cred = New-Object System.Management.Automation.PSCredential ($SmbUser, $SecurePass)
 
-Write-Host "Mounting network share \\10.1.192.20\ISOS"
-New-PSDrive -Name "Z" -PSProvider FileSystem -Root "\\10.1.192.20\ISOS" -Credential (New-Object System.Management.Automation.PSCredential ("osduser", (ConvertTo-SecureString "osduser" -AsPlainText -Force))) -Persist
+New-PSDrive -Name "Z" -PSProvider FileSystem -Root "\\10.1.192.20\Win11_24H2" -Credential $Cred -Persist
 
-
-$ISOLocalPath = "Z:\Win11_24H2_English_x64.iso"
-$MountPath = "X:\MountISO"
-New-Item -ItemType Directory -Path $MountPath -Force | Out-Null
-
-Write-Host "Mounting ISO"
-Mount-DiskImage -ImagePath $ISOLocalPath -StorageType ISO -PassThru | Get-Volume | ForEach-Object {
-    $ISODriveLetter = $_.DriveLetter
-}
-
-$WimSource = "$ISODriveLetter`:\sources\install.wim"
-$WimDest = "X:\OS\install.wim"
-New-Item -ItemType Directory -Path "X:\OS" -Force | Out-Null
-Copy-Item -Path $WimSource -Destination $WimDest -Force
-
-# Optional: List images in WIM to verify index
-# Get-WindowsImage -ImagePath $WimDest
-
-#=======================================================================
-#   OSDCloud: Deployment using local WIM file
-#=======================================================================
-
+#==================== Start OSDCloud from Custom WIM ====================
 $Params = @{
-    OSLicense  = "Volume"
-    OSEdition  = "Enterprise"
-    ZTI        = $true
-    WIMFile    = $WimDest
-    Index      = 6  # Adjust if needed based on Get-WindowsImage
+    OSName       = "Windows 11 24H2"
+    OSEdition    = "Enterprise"
+    OSLanguage   = "en-gb"
+    OSLicense    = "Volume"
+    ZTI          = $true
+    CustomWim    = "Z:\sources\install.wim"
 }
 
-Write-Host "Starting OSDCloud with local WIM"
+Write-Host "Starting OSD Cloud"
 Start-OSDCloud @Params
 
-#=======================================================================
-#   PostOS: OOBE Staging
-#=======================================================================
-
+#==================== PostOS: OOBE Staging ====================
 $OOBEJson = @"
 {
     "Updates":     [],
     "RemoveAppx":  [
-        "MicrosoftTeams", "Microsoft.BingWeather", "Microsoft.BingNews",
-        "Microsoft.GamingApp", "Microsoft.GetHelp", "Microsoft.Getstarted",
-        "Microsoft.Messaging", "Microsoft.MicrosoftOfficeHub",
-        "Microsoft.MicrosoftSolitaireCollection", "Microsoft.People",
-        "Microsoft.PowerAutomateDesktop", "Microsoft.StorePurchaseApp",
-        "Microsoft.Todos", "microsoft.windowscommunicationsapps",
-        "Microsoft.WindowsFeedbackHub", "Microsoft.WindowsMaps",
-        "Microsoft.WindowsSoundRecorder", "Microsoft.Xbox.TCUI",
-        "Microsoft.XboxGameOverlay", "Microsoft.XboxGamingOverlay",
-        "Microsoft.XboxIdentityProvider", "Microsoft.XboxSpeechToTextOverlay",
-        "Microsoft.YourPhone", "Microsoft.ZuneMusic", "Microsoft.ZuneVideo"
+        "MicrosoftTeams",
+        "Microsoft.BingWeather",
+        "Microsoft.BingNews",
+        "Microsoft.GamingApp",
+        "Microsoft.GetHelp",
+        "Microsoft.Getstarted",
+        "Microsoft.Messaging",
+        "Microsoft.MicrosoftOfficeHub",
+        "Microsoft.MicrosoftSolitaireCollection",
+        "Microsoft.People",
+        "Microsoft.PowerAutomateDesktop",
+        "Microsoft.StorePurchaseApp",
+        "Microsoft.Todos",
+        "microsoft.windowscommunicationsapps",
+        "Microsoft.WindowsFeedbackHub",
+        "Microsoft.WindowsMaps",
+        "Microsoft.WindowsSoundRecorder",
+        "Microsoft.Xbox.TCUI",
+        "Microsoft.XboxGameOverlay",
+        "Microsoft.XboxGamingOverlay",
+        "Microsoft.XboxIdentityProvider",
+        "Microsoft.XboxSpeechToTextOverlay",
+        "Microsoft.YourPhone",
+        "Microsoft.ZuneMusic",
+        "Microsoft.ZuneVideo"
     ],
     "UpdateDrivers": true,
     "UpdateWindows": true,
@@ -90,14 +74,10 @@ $OOBEJson = @"
 }
 "@
 
-if (!(Test-Path "C:\ProgramData\OSDeploy")) {
+If (!(Test-Path "C:\ProgramData\OSDeploy")) {
     New-Item "C:\ProgramData\OSDeploy" -ItemType Directory -Force
 }
 $OOBEJson | Out-File -FilePath "C:\ProgramData\OSDeploy\OOBE.json" -Encoding ascii -Force
-
-#=======================================================================
-#   OOBE Script Setup
-#=======================================================================
 
 Write-Host -ForegroundColor Green "Create C:\Windows\System32\oobew11.cmd"
 $OOBETasksCMD = @"
@@ -108,28 +88,19 @@ Start /Wait PowerShell -NoL -C Invoke-WebPSScript https://raw.githubusercontent.
 "@
 $OOBETasksCMD | Out-File -FilePath 'C:\Windows\System32\oobew11.cmd' -Encoding ascii -Force
 
-#=======================================================================
-#   Unattended Setup Configuration
-#=======================================================================
-
+#==================== Unattend XML ====================
 $UnattendXml = @'
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
     <settings pass="oobeSystem">
-        <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64"
-                   publicKeyToken="31bf3856ad364e35" language="neutral"
-                   versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
-                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+        <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <Reseal>
                 <Mode>Audit</Mode>
             </Reseal>
         </component>
     </settings>
     <settings pass="auditUser">
-        <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64"
-                   publicKeyToken="31bf3856ad364e35" language="neutral"
-                   versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
-                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+        <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <RunSynchronous>
                 <RunSynchronousCommand wcm:action="add">
                     <Order>1</Order>
@@ -146,18 +117,12 @@ $UnattendXml = @'
 </unattend>
 '@
 
-$Panther = 'C:\Windows\Panther'
-if (-not (Test-Path $Panther)) {
-    New-Item -Path $Panther -ItemType Directory -Force | Out-Null
+if (-not (Test-Path 'C:\Windows\Panther')) {
+    New-Item -Path 'C:\Windows\Panther' -ItemType Directory -Force | Out-Null
 }
-$UnattendPath = "$Panther\Unattend.xml"
+$UnattendPath = "C:\Windows\Panther\Unattend.xml"
 $UnattendXml | Out-File -FilePath $UnattendPath -Encoding utf8 -Force
-
 Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
-
-#=======================================================================
-#   Reboot to apply
-#=======================================================================
 
 Write-Host "`nRebooting Now"
 Write-Host "Restart-Computer -Force -Verbose"
