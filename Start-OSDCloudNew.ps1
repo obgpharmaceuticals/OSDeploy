@@ -42,6 +42,7 @@ Mount-DiskImage -ImagePath $ISOLocalPath -StorageType ISO -PassThru | Get-Volume
 
 $WimSource = "$ISODriveLetter`:\sources\install.wim"
 $WimDest = "X:\OS\install.wim"
+New-Item -ItemType Directory -Path "X:\OS" -Force | Out-Null
 Copy-Item -Path $WimSource -Destination $WimDest -Force
 
 # Optional: List images in WIM to verify index
