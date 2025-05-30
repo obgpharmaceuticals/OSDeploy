@@ -31,7 +31,7 @@ Write-Host "Mounting network share \\10.1.192.20\ISOS"
 New-PSDrive -Name "Z" -PSProvider FileSystem -Root "\\10.1.192.20\ISOS" -Credential (New-Object System.Management.Automation.PSCredential ("osduser", (ConvertTo-SecureString "osduser" -AsPlainText -Force))) -Persist
 
 
-$ISOLocalPath = "Z:\Windows11_23H2.iso"
+$ISOLocalPath = "Z:\Win11_24H2_English_x64.iso"
 $MountPath = "X:\MountISO"
 New-Item -ItemType Directory -Path $MountPath -Force | Out-Null
 
