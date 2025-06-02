@@ -40,37 +40,37 @@ Start-OSDCloud @Params
 #   PostOS: OOBE Staging
 #=======================================================================
 
+# Create OOBE.json
 $OOBEJson = @"
 {
-    "Updates":     [
-                   ],
+    "Updates":     [],
     "RemoveAppx":  [
-                    "MicrosoftTeams",
-                    "Microsoft.BingWeather",
-                    "Microsoft.BingNews",
-                    "Microsoft.GamingApp",
-                    "Microsoft.GetHelp",
-                    "Microsoft.Getstarted",
-                    "Microsoft.Messaging",
-                    "Microsoft.MicrosoftOfficeHub",
-                    "Microsoft.MicrosoftSolitaireCollection",
-                    "Microsoft.People",
-                    "Microsoft.PowerAutomateDesktop",
-                    "Microsoft.StorePurchaseApp",
-                    "Microsoft.Todos",
-                    "microsoft.windowscommunicationsapps",
-                    "Microsoft.WindowsFeedbackHub",
-                    "Microsoft.WindowsMaps",
-                    "Microsoft.WindowsSoundRecorder",
-                    "Microsoft.Xbox.TCUI",
-                    "Microsoft.XboxGameOverlay",
-                    "Microsoft.XboxGamingOverlay",
-                    "Microsoft.XboxIdentityProvider",
-                    "Microsoft.XboxSpeechToTextOverlay",
-                    "Microsoft.YourPhone",
-                    "Microsoft.ZuneMusic",
-                    "Microsoft.ZuneVideo"
-                   ],
+        "MicrosoftTeams",
+        "Microsoft.BingWeather",
+        "Microsoft.BingNews",
+        "Microsoft.GamingApp",
+        "Microsoft.GetHelp",
+        "Microsoft.Getstarted",
+        "Microsoft.Messaging",
+        "Microsoft.MicrosoftOfficeHub",
+        "Microsoft.MicrosoftSolitaireCollection",
+        "Microsoft.People",
+        "Microsoft.PowerAutomateDesktop",
+        "Microsoft.StorePurchaseApp",
+        "Microsoft.Todos",
+        "microsoft.windowscommunicationsapps",
+        "Microsoft.WindowsFeedbackHub",
+        "Microsoft.WindowsMaps",
+        "Microsoft.WindowsSoundRecorder",
+        "Microsoft.Xbox.TCUI",
+        "Microsoft.XboxGameOverlay",
+        "Microsoft.XboxGamingOverlay",
+        "Microsoft.XboxIdentityProvider",
+        "Microsoft.XboxSpeechToTextOverlay",
+        "Microsoft.YourPhone",
+        "Microsoft.ZuneMusic",
+        "Microsoft.ZuneVideo"
+    ],
     "UpdateDrivers": true,
     "UpdateWindows": true,
     "AutopilotOOBE": true,
@@ -78,64 +78,72 @@ $OOBEJson = @"
 }
 "@
 
-If (!(Test-Path "C:\ProgramData\OSDeploy")) {
-    New-Item "C:\ProgramData\OSDeploy" -ItemType Directory -Force
+$OSDeployPath = "C:\ProgramData\OSDeploy"
+If (!(Test-Path $OSDeployPath)) {
+    New-Item $OSDeployPath -ItemType Directory -Force
 }
-
-$OOBEJson | Out-File -FilePath "C:\ProgramData\OSDeploy\OOBE.json" -Encoding ascii -Force
-
-Write-Host -ForegroundColor Green "Create C:\Windows\System32\oobew11.cmd"
-$OOBETasksCMD = @"
-PowerShell -NoL -Com Set-ExecutionPolicy RemoteSigned -Force
-Set Path = %PATH%;C:\Program Files\WindowsPowerShell\Scripts
-Start /Wait PowerShell -NoL -C Install-Module OSD -Force -Verbose
-Start /Wait PowerShell -NoL -C Invoke-WebPSScript https://raw.githubusercontent.com/obgpharmaceuticals/OSDeploy/main/oobew11.ps1
-"@
-
-$OOBETasksCMD | Out-File -FilePath 'C:\Windows\System32\oobew11.cmd' -Encoding ascii -Force
+$OOBEJson | Out-File -FilePath "$OSDeployPath\OOBE.json" -Encoding ascii -Force
 
 #=======================================================================
-# UnattendXml
+# Autopilot Configuration
 #=======================================================================
+
+$AutopilotConfig = @{
+    CloudAssignedOobeConfig        = 131
+    CloudAssignedTenantId          = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"  # <--- Replace this
+    CloudAssignedDomainJoinMethod  = 0
+    ZtdCorrelationId               = (New-Guid).Guid
+    CloudAssignedTenantDomain      = "obgpharma.onmicrosoft.com"  # <--- Replace this
+    CloudAssignedUserUpn           = ""
+    CloudAssignedGroupTag          = $GroupTag
+} | ConvertTo-Json -Depth 3
+
+$AutopilotPath = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
+If (!(Test-Path $AutopilotPath)) {
+    New-Item $AutopilotPath -ItemType Directory -Force
+}
+$AutopilotConfig | Out-File -FilePath "$AutopilotPath\AutopilotConfigurationFile.json" -Encoding ascii -Force
+
+#=======================================================================
+# UnattendXml: go directly to OOBE
+#=======================================================================
+
 $UnattendXml = @'
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
     <settings pass="oobeSystem">
-        <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-            <Reseal>
-                <Mode>Audit</Mode>
-            </Reseal>
+        <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <InputLocale>en-US</InputLocale>
+            <SystemLocale>en-US</SystemLocale>
+            <UILanguage>en-US</UILanguage>
+            <UserLocale>en-US</UserLocale>
         </component>
-    </settings>
-    <settings pass="auditUser">
-        <component name="Microsoft-Windows-Deployment" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-            <RunSynchronous>
-                <RunSynchronousCommand wcm:action="add">
-                <Order>1</Order>
-                <Description>OOBE</Description>
-                <Path>oobew11.cmd</Path>
-                <WillReboot>Always</WillReboot>
-                </RunSynchronousCommand>
-            </RunSynchronous>
-            <Reseal>
-                <Mode>OOBE</Mode>
-            </Reseal>
+        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <OOBE>
+                <HideEULAPage>true</HideEULAPage>
+                <NetworkLocation>Work</NetworkLocation>
+                <ProtectYourPC>1</ProtectYourPC>
+            </OOBE>
+            <TimeZone>UTC</TimeZone>
+            <RegisteredOrganization>MyOrg</RegisteredOrganization>
+            <RegisteredOwner>AutoPilot</RegisteredOwner>
+            <DoNotCleanTaskBar>true</DoNotCleanTaskBar>
         </component>
     </settings>
 </unattend>
 '@
 
-if (-NOT (Test-Path 'C:\Windows\Panther')) {
-    New-Item -Path 'C:\Windows\Panther'-ItemType Directory -Force -ErrorAction Stop | Out-Null
-}
-
 $Panther = 'C:\Windows\Panther'
+if (-NOT (Test-Path $Panther)) {
+    New-Item -Path $Panther -ItemType Directory -Force | Out-Null
+}
 $UnattendPath = "$Panther\Unattend.xml"
-
-Write-Verbose -Verbose "Setting $UnattendPath"
+Write-Host "Writing unattend to $UnattendPath"
 $UnattendXml | Out-File -FilePath $UnattendPath -Encoding utf8 -Force
-Write-Verbose -Verbose "Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath"
 Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
 
-Write-Host "\nRebooting Now"
-Write-Host "Restart-Computer -Force -Verbose"
+#=======================================================================
+# Final Step: Reboot
+#=======================================================================
+Write-Host "`nRebooting Now"
+Write-Host "Restart-Computer -Force"
