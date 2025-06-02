@@ -37,10 +37,9 @@ Write-Host "Starting OSD Cloud"
 Start-OSDCloud @Params
 
 #=======================================================================
-#   PostOS: OOBE Staging
+#   PostOS: OOBE Staging - Create OOBE.json
 #=======================================================================
 
-# Create OOBE.json
 $OOBEJson = @"
 {
     "Updates":     [],
@@ -85,24 +84,26 @@ If (!(Test-Path $OSDeployPath)) {
 $OOBEJson | Out-File -FilePath "$OSDeployPath\OOBE.json" -Encoding ascii -Force
 
 #=======================================================================
-# Autopilot Configuration
+#   Autopilot Configuration - create AutopilotConfigurationFile.json
 #=======================================================================
 
 $AutopilotConfig = @{
-    CloudAssignedOobeConfig        = 131
-    CloudAssignedTenantId          = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"  # <--- Replace this
-    CloudAssignedDomainJoinMethod  = 0
-    ZtdCorrelationId               = (New-Guid).Guid
-    CloudAssignedTenantDomain      = "obgpharma.onmicrosoft.com"  # <--- Replace this
-    CloudAssignedUserUpn           = ""
-    CloudAssignedGroupTag          = $GroupTag
-} | ConvertTo-Json -Depth 3
+    CloudAssignedOobeConfig       = 131   # Enables Autopilot OOBE
+    CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"  # Replace with your tenant ID
+    CloudAssignedDomainJoinMethod = 0     # Azure AD Join only
+    ZtdCorrelationId              = (New-Guid).Guid
+    CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"  # Replace with your tenant domain
+    CloudAssignedUserUpn          = ""    # Leave blank for self-deployment
+    CloudAssignedGroupTag         = $GroupTag
+} | ConvertTo-Json -Depth 10
 
 $AutopilotPath = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
 If (!(Test-Path $AutopilotPath)) {
     New-Item $AutopilotPath -ItemType Directory -Force
 }
 $AutopilotConfig | Out-File -FilePath "$AutopilotPath\AutopilotConfigurationFile.json" -Encoding ascii -Force
+
+Write-Host "AutopilotConfigurationFile.json created with GroupTag: $GroupTag"
 
 #=======================================================================
 # UnattendXml: go directly to OOBE
@@ -143,7 +144,8 @@ $UnattendXml | Out-File -FilePath $UnattendPath -Encoding utf8 -Force
 Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
 
 #=======================================================================
-# Final Step: Reboot
+# Final Step: Reboot into OOBE for Autopilot
 #=======================================================================
-Write-Host "`nRebooting Now"
-Write-Host "Restart-Computer -Force"
+
+Write-Host "`nRebooting Now to start Autopilot OOBE"
+Restart-Computer -Force
