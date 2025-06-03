@@ -33,26 +33,38 @@ $Params = @{
 #=======================================================================
 #  OS: Start-OSDCloud
 #=======================================================================
-
 Write-Host "Starting OSD Cloud"
 Start-OSDCloud @Params
 
 #=======================================================================
-#  Drivers: Inject only Windows 11 (w1164) driver pack
+#  Drivers: Inject only Windows 11 (w1164) driver pack (Improved Matching)
 #=======================================================================
 
-Write-Host "Checking for available driver packs for Windows 11 (w1164)..."
+Write-Host "`n================ Driver Injection =================" -ForegroundColor Cyan
 
-$Model = (Get-MyComputerModel).Model
+$ComputerInfo = Get-MyComputerModel
+$Manufacturer = $ComputerInfo.Manufacturer
+$Model        = $ComputerInfo.Model
+
+Write-Host "Detected Manufacturer: $Manufacturer"
+Write-Host "Detected Model: $Model"
+
 $DriverPacks = Get-OSDCloudDriverPack | Where-Object {
-    $_.OperatingSystem -eq 'Windows 11' -and $_.SystemSKUs -contains $Model -and $_.OSDCloudOSArch -eq 'x64'
+    $_.OperatingSystem -eq 'Windows 11' -and
+    $_.OSDCloudOSArch -eq 'x64' -and
+    $_.Manufacturer -eq $Manufacturer -and
+    $_.Model -eq $Model
 }
 
 if ($DriverPacks.Count -eq 0) {
-    Write-Warning "No Windows 11 driver pack found for this model: $Model"
+    Write-Warning "⚠ No Windows 11 driver pack found for $Manufacturer $Model"
+    Write-Host "`nHere are all available Windows 11 x64 driver packs:" -ForegroundColor Yellow
+    Get-OSDCloudDriverPack | Where-Object {
+        $_.OperatingSystem -eq 'Windows 11' -and $_.OSDCloudOSArch -eq 'x64'
+    } | Format-Table Manufacturer, Model, SystemSKUs
 } else {
-    Write-Host "Injecting Windows 11 drivers for model: $Model"
     $DriverPack = $DriverPacks | Select-Object -First 1
+    Write-Host "✅ Injecting drivers for: $Manufacturer $Model"
     Install-OSDCloudDriverPack -DriverPack $DriverPack
 }
 
@@ -60,42 +72,14 @@ if ($DriverPacks.Count -eq 0) {
 #   PostOS: OOBE Staging - Create OOBE.json
 #=======================================================================
 
-$OOBEJson = @"
-{
-    "Updates":     [],
-    "RemoveAppx":  [
-        "MicrosoftTeams",
-        "Microsoft.BingWeather",
-        "Microsoft.BingNews",
-        "Microsoft.GamingApp",
-        "Microsoft.GetHelp",
-        "Microsoft.Getstarted",
-        "Microsoft.Messaging",
-        "Microsoft.MicrosoftOfficeHub",
-        "Microsoft.MicrosoftSolitaireCollection",
-        "Microsoft.People",
-        "Microsoft.PowerAutomateDesktop",
-        "Microsoft.StorePurchaseApp",
-        "Microsoft.Todos",
-        "microsoft.windowscommunicationsapps",
-        "Microsoft.WindowsFeedbackHub",
-        "Microsoft.WindowsMaps",
-        "Microsoft.WindowsSoundRecorder",
-        "Microsoft.Xbox.TCUI",
-        "Microsoft.XboxGameOverlay",
-        "Microsoft.XboxGamingOverlay",
-        "Microsoft.XboxIdentityProvider",
-        "Microsoft.XboxSpeechToTextOverlay",
-        "Microsoft.YourPhone",
-        "Microsoft.ZuneMusic",
-        "Microsoft.ZuneVideo"
-    ],
+$OOBEJson = @"{
+    "Updates": [],
+    "RemoveAppx": ["MicrosoftTeams", "Microsoft.BingWeather", "Microsoft.BingNews", "Microsoft.GamingApp", "Microsoft.GetHelp", "Microsoft.Getstarted", "Microsoft.Messaging", "Microsoft.MicrosoftOfficeHub", "Microsoft.MicrosoftSolitaireCollection", "Microsoft.People", "Microsoft.PowerAutomateDesktop", "Microsoft.StorePurchaseApp", "Microsoft.Todos", "microsoft.windowscommunicationsapps", "Microsoft.WindowsFeedbackHub", "Microsoft.WindowsMaps", "Microsoft.WindowsSoundRecorder", "Microsoft.Xbox.TCUI", "Microsoft.XboxGameOverlay", "Microsoft.XboxGamingOverlay", "Microsoft.XboxIdentityProvider", "Microsoft.XboxSpeechToTextOverlay", "Microsoft.YourPhone", "Microsoft.ZuneMusic", "Microsoft.ZuneVideo"],
     "UpdateDrivers": true,
     "UpdateWindows": true,
     "AutopilotOOBE": true,
     "GroupTagID": "$GroupTag"
-}
-"@
+}"@
 
 $OSDeployPath = "C:\ProgramData\OSDeploy"
 If (!(Test-Path $OSDeployPath)) {
@@ -133,7 +117,6 @@ $HardwareHashPath = "C:\HardwareHash.csv"
 Write-Host "Capturing Autopilot hardware hash to $HardwareHashPath"
 Start-Process -FilePath "mdmdiagnosticstool.exe" -ArgumentList "-CollectHardwareHash -Output $HardwareHashPath" -Wait
 
-# Optional: Copy to USB or network share
 $TargetCopyPath = "D:\AutopilotHashes"  # Change as needed
 if (Test-Path $TargetCopyPath) {
     Copy-Item -Path $HardwareHashPath -Destination $TargetCopyPath -Force
@@ -181,16 +164,8 @@ $UnattendXml | Out-File -FilePath $UnattendPath -Encoding utf8 -Force
 Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
 
 #=======================================================================
-# Final Step: Reboot into OOBE for Autopilot with reboot logic
+# Final Step: Reboot into OOBE for Autopilot
 #=======================================================================
 
-# Create a flag file indicating reboot is pending (optional, for your tracking)
-$RebootFlag = "C:\ProgramData\OSDeploy\RebootPending.flag"
-If (!(Test-Path -Path (Split-Path $RebootFlag))) {
-    New-Item -ItemType Directory -Path (Split-Path $RebootFlag) -Force | Out-Null
-}
-New-Item -ItemType File -Path $RebootFlag -Force | Out-Null
-Write-Host "Reboot flag file created at $RebootFlag"
-
-Write-Host "`nRebooting Now to start Autopilot OOBE..."
+Write-Host "`nRebooting Now to start Autopilot OOBE"
 Restart-Computer -Force
