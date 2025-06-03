@@ -88,12 +88,12 @@ $OOBEJson | Out-File -FilePath "$OSDeployPath\OOBE.json" -Encoding ascii -Force
 #=======================================================================
 
 $AutopilotConfig = @{
-    CloudAssignedOobeConfig       = 131   # Enables Autopilot OOBE
-    CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"  # Replace with your tenant ID
-    CloudAssignedDomainJoinMethod = 0     # Azure AD Join only
+    CloudAssignedOobeConfig       = 131
+    CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+    CloudAssignedDomainJoinMethod = 0
     ZtdCorrelationId              = (New-Guid).Guid
-    CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"  # Replace with your tenant domain
-    CloudAssignedUserUpn          = ""    # Leave blank for self-deployment
+    CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
+    CloudAssignedUserUpn          = ""
     CloudAssignedGroupTag         = $GroupTag
 } | ConvertTo-Json -Depth 10
 
@@ -104,6 +104,23 @@ If (!(Test-Path $AutopilotPath)) {
 $AutopilotConfig | Out-File -FilePath "$AutopilotPath\AutopilotConfigurationFile.json" -Encoding ascii -Force
 
 Write-Host "AutopilotConfigurationFile.json created with GroupTag: $GroupTag"
+
+#=======================================================================
+#   Autopilot Hardware Hash Capture (Optional)
+#=======================================================================
+
+$HardwareHashPath = "C:\HardwareHash.csv"
+Write-Host "Capturing Autopilot hardware hash to $HardwareHashPath"
+Start-Process -FilePath "mdmdiagnosticstool.exe" -ArgumentList "-CollectHardwareHash -Output $HardwareHashPath" -Wait
+
+# Optional: Copy to USB or network share
+$TargetCopyPath = "D:\AutopilotHashes"  # Change as needed
+if (Test-Path $TargetCopyPath) {
+    Copy-Item -Path $HardwareHashPath -Destination $TargetCopyPath -Force
+    Write-Host "Hardware hash copied to $TargetCopyPath"
+} else {
+    Write-Host "Target copy path $TargetCopyPath not found. Skipping copy."
+}
 
 #=======================================================================
 # UnattendXml: go directly to OOBE
