@@ -33,12 +33,14 @@ $Params = @{
 #=======================================================================
 #  OS: Start-OSDCloud
 #=======================================================================
+
 Write-Host "Starting OSD Cloud"
 Start-OSDCloud @Params
 
 #=======================================================================
 #  Drivers: Inject only Windows 11 (w1164) driver pack
 #=======================================================================
+
 Write-Host "Checking for available driver packs for Windows 11 (w1164)..."
 
 $Model = (Get-MyComputerModel).Model
@@ -179,8 +181,16 @@ $UnattendXml | Out-File -FilePath $UnattendPath -Encoding utf8 -Force
 Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
 
 #=======================================================================
-# Final Step: Reboot into OOBE for Autopilot
+# Final Step: Reboot into OOBE for Autopilot with reboot logic
 #=======================================================================
 
-Write-Host "`nRebooting Now to start Autopilot OOBE"
+# Create a flag file indicating reboot is pending (optional, for your tracking)
+$RebootFlag = "C:\ProgramData\OSDeploy\RebootPending.flag"
+If (!(Test-Path -Path (Split-Path $RebootFlag))) {
+    New-Item -ItemType Directory -Path (Split-Path $RebootFlag) -Force | Out-Null
+}
+New-Item -ItemType File -Path $RebootFlag -Force | Out-Null
+Write-Host "Reboot flag file created at $RebootFlag"
+
+Write-Host "`nRebooting Now to start Autopilot OOBE..."
 Restart-Computer -Force
