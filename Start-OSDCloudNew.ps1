@@ -168,4 +168,4 @@ Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
 #=======================================================================
 
 Write-Host "`nRebooting Now to start Autopilot OOBE"
-Restart-Computer -Force
+Read-Host "Restart-Computer -Force"
