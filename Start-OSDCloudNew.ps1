@@ -37,6 +37,24 @@ Write-Host "Starting OSD Cloud"
 Start-OSDCloud @Params
 
 #=======================================================================
+#  Drivers: Inject only Windows 11 (w1164) driver pack
+#=======================================================================
+Write-Host "Checking for available driver packs for Windows 11 (w1164)..."
+
+$Model = (Get-MyComputerModel).Model
+$DriverPacks = Get-OSDCloudDriverPack | Where-Object {
+    $_.OperatingSystem -eq 'Windows 11' -and $_.SystemSKUs -contains $Model -and $_.OSDCloudOSArch -eq 'x64'
+}
+
+if ($DriverPacks.Count -eq 0) {
+    Write-Warning "No Windows 11 driver pack found for this model: $Model"
+} else {
+    Write-Host "Injecting Windows 11 drivers for model: $Model"
+    $DriverPack = $DriverPacks | Select-Object -First 1
+    Install-OSDCloudDriverPack -DriverPack $DriverPack
+}
+
+#=======================================================================
 #   PostOS: OOBE Staging - Create OOBE.json
 #=======================================================================
 
