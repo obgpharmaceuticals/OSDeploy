@@ -1,171 +1,46 @@
-Write-Host "Start Process New"
+Write-Host "`nStarting Deployment Script..." -ForegroundColor Cyan
+Start-Sleep -Seconds 2
+
+# Create log file
+$LogPath = "X:\DeployScript.log"
+Start-Transcript -Path $LogPath -Append
 
 #=======================================================================
 #   Selection: Choose the type of system which is being deployed
 #=======================================================================
-
 $GroupTag = "NotSet"
+
 do {
-    Write-Host "================ Computer Type ================"
+    Write-Host "`n================ Computer Type ================" -ForegroundColor Yellow
     Write-Host "1: Productivity Desktop"
     Write-Host "2: Productivity Laptop"
     Write-Host "3: Line of Business"
-    $selection = Read-Host "Please make a selection"
+    try {
+        $selection = Read-Host "Please make a selection"
+    } catch {
+        Write-Warning "Input failed. Trying again in 5 seconds..."
+        Start-Sleep -Seconds 5
+        continue
+    }
+
     switch ($selection) {
         '1' { $GroupTag = "ProductivityDesktop" }
         '2' { $GroupTag = "ProductivityLaptop" }
         '3' { $GroupTag = "LineOfBusinessDesktop" }
+        default {
+            Write-Warning "Invalid selection. Please choose 1, 2, or 3."
+            $GroupTag = "NotSet"
+        }
     }
 } until ($GroupTag -ne "NotSet")
 
-#=======================================================================
-#   OS: Set up the OSD parameters for launch
-#=======================================================================
+Write-Host "`nGroup selected: $GroupTag" -ForegroundColor Green
+Start-Sleep -Seconds 1
 
+#=======================================================================
+#   OS: Set up OSDCloud parameters
+#=======================================================================
 $Params = @{
     OSName     = "Windows 11 23H2 x64"
     OSEdition  = "Enterprise"
-    OSLanguage = "en-gb"
-    OSLicense  = "Volume"
-    ZTI        = $true
-}
-
-#=======================================================================
-#  OS: Start-OSDCloud
-#=======================================================================
-Write-Host "Starting OSD Cloud"
-Start-OSDCloud @Params
-
-#=======================================================================
-#  Drivers: Inject only Windows 11 (w1164) driver pack (Improved Matching)
-#=======================================================================
-
-Write-Host "`n================ Driver Injection =================" -ForegroundColor Cyan
-
-$ComputerInfo = Get-MyComputerModel
-$Manufacturer = $ComputerInfo.Manufacturer
-$Model        = $ComputerInfo.Model
-
-Write-Host "Detected Manufacturer: $Manufacturer"
-Write-Host "Detected Model: $Model"
-
-$DriverPacks = Get-OSDCloudDriverPack | Where-Object {
-    $_.OperatingSystem -eq 'Windows 11' -and
-    $_.OSDCloudOSArch -eq 'x64' -and
-    $_.Manufacturer -eq $Manufacturer -and
-    $_.Model -eq $Model
-}
-
-if ($DriverPacks.Count -eq 0) {
-    Write-Warning "⚠ No Windows 11 driver pack found for $Manufacturer $Model"
-    Write-Host "`nHere are all available Windows 11 x64 driver packs:" -ForegroundColor Yellow
-    Get-OSDCloudDriverPack | Where-Object {
-        $_.OperatingSystem -eq 'Windows 11' -and $_.OSDCloudOSArch -eq 'x64'
-    } | Format-Table Manufacturer, Model, SystemSKUs
-} else {
-    $DriverPack = $DriverPacks | Select-Object -First 1
-    Write-Host "✅ Injecting drivers for: $Manufacturer $Model"
-    Install-OSDCloudDriverPack -DriverPack $DriverPack
-}
-
-#=======================================================================
-#   PostOS: OOBE Staging - Create OOBE.json
-#=======================================================================
-
-$OOBEJson = @"{
-    "Updates": [],
-    "RemoveAppx": ["MicrosoftTeams", "Microsoft.BingWeather", "Microsoft.BingNews", "Microsoft.GamingApp", "Microsoft.GetHelp", "Microsoft.Getstarted", "Microsoft.Messaging", "Microsoft.MicrosoftOfficeHub", "Microsoft.MicrosoftSolitaireCollection", "Microsoft.People", "Microsoft.PowerAutomateDesktop", "Microsoft.StorePurchaseApp", "Microsoft.Todos", "microsoft.windowscommunicationsapps", "Microsoft.WindowsFeedbackHub", "Microsoft.WindowsMaps", "Microsoft.WindowsSoundRecorder", "Microsoft.Xbox.TCUI", "Microsoft.XboxGameOverlay", "Microsoft.XboxGamingOverlay", "Microsoft.XboxIdentityProvider", "Microsoft.XboxSpeechToTextOverlay", "Microsoft.YourPhone", "Microsoft.ZuneMusic", "Microsoft.ZuneVideo"],
-    "UpdateDrivers": true,
-    "UpdateWindows": true,
-    "AutopilotOOBE": true,
-    "GroupTagID": "$GroupTag"
-}"@
-
-$OSDeployPath = "C:\ProgramData\OSDeploy"
-If (!(Test-Path $OSDeployPath)) {
-    New-Item $OSDeployPath -ItemType Directory -Force
-}
-$OOBEJson | Out-File -FilePath "$OSDeployPath\OOBE.json" -Encoding ascii -Force
-
-#=======================================================================
-#   Autopilot Configuration - create AutopilotConfigurationFile.json
-#=======================================================================
-
-$AutopilotConfig = @{
-    CloudAssignedOobeConfig       = 131
-    CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
-    CloudAssignedDomainJoinMethod = 0
-    ZtdCorrelationId              = (New-Guid).Guid
-    CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
-    CloudAssignedUserUpn          = ""
-    CloudAssignedGroupTag         = $GroupTag
-} | ConvertTo-Json -Depth 10
-
-$AutopilotPath = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
-If (!(Test-Path $AutopilotPath)) {
-    New-Item $AutopilotPath -ItemType Directory -Force
-}
-$AutopilotConfig | Out-File -FilePath "$AutopilotPath\AutopilotConfigurationFile.json" -Encoding ascii -Force
-
-Write-Host "AutopilotConfigurationFile.json created with GroupTag: $GroupTag"
-
-#=======================================================================
-#   Autopilot Hardware Hash Capture (Optional)
-#=======================================================================
-
-$HardwareHashPath = "C:\HardwareHash.csv"
-Write-Host "Capturing Autopilot hardware hash to $HardwareHashPath"
-Start-Process -FilePath "mdmdiagnosticstool.exe" -ArgumentList "-CollectHardwareHash -Output $HardwareHashPath" -Wait
-
-$TargetCopyPath = "D:\AutopilotHashes"  # Change as needed
-if (Test-Path $TargetCopyPath) {
-    Copy-Item -Path $HardwareHashPath -Destination $TargetCopyPath -Force
-    Write-Host "Hardware hash copied to $TargetCopyPath"
-} else {
-    Write-Host "Target copy path $TargetCopyPath not found. Skipping copy."
-}
-
-#=======================================================================
-# UnattendXml: go directly to OOBE
-#=======================================================================
-
-$UnattendXml = @'
-<?xml version="1.0" encoding="utf-8"?>
-<unattend xmlns="urn:schemas-microsoft-com:unattend">
-    <settings pass="oobeSystem">
-        <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-            <InputLocale>en-US</InputLocale>
-            <SystemLocale>en-US</SystemLocale>
-            <UILanguage>en-US</UILanguage>
-            <UserLocale>en-US</UserLocale>
-        </component>
-        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-            <OOBE>
-                <HideEULAPage>true</HideEULAPage>
-                <NetworkLocation>Work</NetworkLocation>
-                <ProtectYourPC>1</ProtectYourPC>
-            </OOBE>
-            <TimeZone>UTC</TimeZone>
-            <RegisteredOrganization>MyOrg</RegisteredOrganization>
-            <RegisteredOwner>AutoPilot</RegisteredOwner>
-            <DoNotCleanTaskBar>true</DoNotCleanTaskBar>
-        </component>
-    </settings>
-</unattend>
-'@
-
-$Panther = 'C:\Windows\Panther'
-if (-NOT (Test-Path $Panther)) {
-    New-Item -Path $Panther -ItemType Directory -Force | Out-Null
-}
-$UnattendPath = "$Panther\Unattend.xml"
-Write-Host "Writing unattend to $UnattendPath"
-$UnattendXml | Out-File -FilePath $UnattendPath -Encoding utf8 -Force
-Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
-
-#=======================================================================
-# Final Step: Reboot into OOBE for Autopilot
-#=======================================================================
-
-Write-Host "`nRebooting Now to start Autopilot OOBE"
-Read-Host "Restart-Computer -Force"
+    OSLan
