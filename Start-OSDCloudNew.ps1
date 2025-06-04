@@ -72,7 +72,8 @@ if ($DriverPack) {
 #   PostOS: Create OOBE.json
 #=======================================================================
 
-$OOBEJson = @"{
+$OOBEJson = @"
+{
     "Updates": [],
     "RemoveAppx": [
         "MicrosoftTeams", "Microsoft.GamingApp", "Microsoft.GetHelp",
@@ -85,7 +86,8 @@ $OOBEJson = @"{
     "UpdateWindows": true,
     "AutopilotOOBE": true,
     "GroupTagID": "$GroupTag"
-}"@
+}
+"@
 
 $OSDeployPath = "C:\ProgramData\OSDeploy"
 New-Item -Path $OSDeployPath -ItemType Directory -Force | Out-Null
