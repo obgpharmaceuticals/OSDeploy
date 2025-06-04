@@ -163,4 +163,4 @@ try {
 
 Write-Host "\nRebooting into OOBE for Autopilot..." -ForegroundColor Green
 Stop-Transcript
-Restart-Computer -Force
+# Restart-Computer -Force
