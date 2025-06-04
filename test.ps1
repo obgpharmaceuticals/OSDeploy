@@ -51,24 +51,6 @@ Write-Host "Starting OSDCloud deployment..."
 Start-OSDCloud @Params
 
 #=======================================================================
-#   Inject Windows 11 Driver Pack Only
-#=======================================================================
-
-$Model = (Get-MyComputerModel).Model
-$DriverPack = Get-OSDCloudDriverPack | Where-Object {
-    $_.OperatingSystem -eq 'Windows 11' -and
-    $_.SystemSKUs -contains $Model -and
-    $_.OSDCloudOSArch -eq 'x64'
-} | Sort-Object -Property DriverPackVersion -Descending | Select-Object -First 1
-
-if ($DriverPack) {
-    Write-Host "Installing driver pack: $($DriverPack.Name)"
-    Install-OSDCloudDriverPack -DriverPack $DriverPack
-} else {
-    Write-Warning "No Windows 11 driver pack found for model: $Model"
-}
-
-#=======================================================================
 #   PostOS: Create OOBE.json
 #=======================================================================
 
@@ -112,68 +94,31 @@ New-Item -Path $AutopilotPath -ItemType Directory -Force | Out-Null
 $AutopilotConfig | Out-File -FilePath "$AutopilotPath\AutopilotConfigurationFile.json" -Encoding ascii -Force
 
 #=======================================================================
-#   Capture Autopilot Hardware Hash (Optional)
+#   Capture Autopilot Hardware Hash and Autopilot Logs
 #=======================================================================
 
 $HardwareHashPath = "C:\HardwareHash.csv"
-Start-Process -FilePath "mdmdiagnosticstool.exe" -ArgumentList "-CollectHardwareHash -Output $HardwareHashPath" -Wait
+if (Get-Command "mdmdiagnosticstool.exe" -ErrorAction SilentlyContinue) {
+    Start-Process -FilePath "mdmdiagnosticstool.exe" -ArgumentList "-CollectHardwareHash -Output $HardwareHashPath" -Wait
+    Write-Host "Hardware hash captured to $HardwareHashPath"
 
-$TargetCopyPath = "D:\AutopilotHashes"
-if (Test-Path $TargetCopyPath) {
-    Copy-Item -Path $HardwareHashPath -Destination $TargetCopyPath -Force
-    Write-Host "Hardware hash copied to $TargetCopyPath"
+    $TargetCopyPath = "D:\AutopilotHashes"
+    if (Test-Path $TargetCopyPath) {
+        Copy-Item -Path $HardwareHashPath -Destination $TargetCopyPath -Force
+        Write-Host "Hardware hash copied to $TargetCopyPath"
+    }
+
+    $DiagOutput = "C:\autopilot.cab"
+    Start-Process -FilePath "mdmdiagnosticstool.exe" -ArgumentList "-area Autopilot -cab $DiagOutput" -Wait
+    Write-Host "Autopilot diagnostics written to $DiagOutput"
+} else {
+    Write-Warning "mdmdiagnosticstool.exe not found. Skipping hardware hash and diagnostics."
 }
 
 #=======================================================================
-#   Apply unattend.xml to automate reboot into OOBE
+# Final Step: Stop transcript only (no unattended applied)
 #=======================================================================
-
-$UnattendXml = @'
-<?xml version="1.0" encoding="utf-8"?>
-<unattend xmlns="urn:schemas-microsoft-com:unattend">
-    <settings pass="oobeSystem">
-        <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64"
-            publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
-            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
-            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-            <InputLocale>en-US</InputLocale>
-            <SystemLocale>en-US</SystemLocale>
-            <UILanguage>en-US</UILanguage>
-            <UserLocale>en-US</UserLocale>
-        </component>
-        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64"
-            publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
-            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
-            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-            <OOBE>
-                <HideEULAPage>true</HideEULAPage>
-                <NetworkLocation>Work</NetworkLocation>
-                <ProtectYourPC>1</ProtectYourPC>
-            </OOBE>
-            <TimeZone>UTC</TimeZone>
-            <RegisteredOrganization>MyOrg</RegisteredOrganization>
-            <RegisteredOwner>AutoPilot</RegisteredOwner>
-        </component>
-    </settings>
-</unattend>
-'@
-
-$Panther = 'C:\Windows\Panther'
-New-Item -Path $Panther -ItemType Directory -Force | Out-Null
-$UnattendPath = "$Panther\Unattend.xml"
-$UnattendXml | Out-File -FilePath $UnattendPath -Encoding utf8 -Force
-
-try {
-    Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
-} catch {
-    Write-Warning "Use-WindowsUnattend failed: $_"
-}
-
-#=======================================================================
-# Final Step: Reboot into OOBE
-#=======================================================================
-
-Write-Host "\nRebooting into OOBE for Autopilot..." -ForegroundColor Green
+Write-Host "\nFinished deployment phase. No Unattend applied to allow clean OOBE boot." -ForegroundColor Green
 try {
     Stop-Transcript
 } catch {
@@ -181,4 +126,4 @@ try {
 }
 
 Start-Sleep -Seconds 5
-# Restart-Computer -Force
+Restart-Computer -Force
