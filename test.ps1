@@ -102,12 +102,6 @@ if (Get-Command "mdmdiagnosticstool.exe" -ErrorAction SilentlyContinue) {
     Start-Process -FilePath "mdmdiagnosticstool.exe" -ArgumentList "-CollectHardwareHash -Output $HardwareHashPath" -Wait
     Write-Host "Hardware hash captured to $HardwareHashPath"
 
-    $TargetCopyPath = "D:\AutopilotHashes"
-    if (Test-Path $TargetCopyPath) {
-        Copy-Item -Path $HardwareHashPath -Destination $TargetCopyPath -Force
-        Write-Host "Hardware hash copied to $TargetCopyPath"
-    }
-
     $DiagOutput = "C:\autopilot.cab"
     Start-Process -FilePath "mdmdiagnosticstool.exe" -ArgumentList "-area Autopilot -cab $DiagOutput" -Wait
     Write-Host "Autopilot diagnostics written to $DiagOutput"
