@@ -167,4 +167,4 @@ Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
 #=======================================================================
 Write-Host "`nRebooting into OOBE for Autopilot..." -ForegroundColor Green
 Stop-Transcript
-Restart-Computer -Force
+# Restart-Computer -Force
