@@ -1,6 +1,15 @@
 Write-Host "Start Process New"
 
-Start-Transcript -Path "X:\DeployScript.log" -Append
+$LogPath = "X:\DeployScript.log"
+if (Test-Path (Split-Path $LogPath -Parent)) {
+    try {
+        Start-Transcript -Path $LogPath -Force -ErrorAction Stop
+    } catch {
+        Write-Warning "Transcript could not be started: $_"
+    }
+} else {
+    Write-Warning "Transcript path is not writable. Skipping log."
+}
 
 #=======================================================================
 #   Selection: Choose the type of system which is being deployed
