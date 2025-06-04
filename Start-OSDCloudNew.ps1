@@ -1,24 +1,21 @@
-Write-Host "`nStarting Deployment Script..." -ForegroundColor Cyan
-Start-Sleep -Seconds 2
+Write-Host "Start Process New"
 
-# Create log file
-$LogPath = "X:\DeployScript.log"
-Start-Transcript -Path $LogPath -Append
+Start-Transcript -Path "X:\DeployScript.log" -Append
 
 #=======================================================================
 #   Selection: Choose the type of system which is being deployed
 #=======================================================================
-$GroupTag = "NotSet"
 
+$GroupTag = "NotSet"
 do {
-    Write-Host "`n================ Computer Type ================" -ForegroundColor Yellow
+    Write-Host "================ Computer Type ================" -ForegroundColor Yellow
     Write-Host "1: Productivity Desktop"
     Write-Host "2: Productivity Laptop"
     Write-Host "3: Line of Business"
     try {
         $selection = Read-Host "Please make a selection"
     } catch {
-        Write-Warning "Input failed. Trying again in 5 seconds..."
+        Write-Warning "Input failed. Retrying..."
         Start-Sleep -Seconds 5
         continue
     }
@@ -34,12 +31,10 @@ do {
     }
 } until ($GroupTag -ne "NotSet")
 
-Write-Host "`nGroup selected: $GroupTag" -ForegroundColor Green
-Start-Sleep -Seconds 1
-
 #=======================================================================
 #   OS: Set up OSDCloud parameters
 #=======================================================================
+
 $Params = @{
     OSName     = "Windows 11 23H2 x64"
     OSEdition  = "Enterprise"
@@ -48,53 +43,45 @@ $Params = @{
     ZTI        = $true
 }
 
-Write-Host "`nStarting OSDCloud deployment..." -ForegroundColor Cyan
+Write-Host "Starting OSDCloud deployment..."
 Start-OSDCloud @Params
 
 #=======================================================================
-#  Drivers: Inject Windows 11-only driver pack
+#   Inject Windows 11 Driver Pack Only
 #=======================================================================
-Write-Host "`nChecking for Windows 11 drivers..." -ForegroundColor Cyan
 
 $Model = (Get-MyComputerModel).Model
 $DriverPack = Get-OSDCloudDriverPack | Where-Object {
     $_.OperatingSystem -eq 'Windows 11' -and
     $_.SystemSKUs -contains $Model -and
     $_.OSDCloudOSArch -eq 'x64'
-} | Select-Object -First 1
+} | Sort-Object -Property DriverPackVersion -Descending | Select-Object -First 1
 
-if ($null -eq $DriverPack) {
-    Write-Warning "No compatible driver pack found for: $Model"
-} else {
+if ($DriverPack) {
+    Write-Host "Installing driver pack: $($DriverPack.Name)"
     Install-OSDCloudDriverPack -DriverPack $DriverPack
-    Write-Host "Injected drivers for $Model"
+} else {
+    Write-Warning "No Windows 11 driver pack found for model: $Model"
 }
 
 #=======================================================================
-#   OOBE: Write OOBE.json for cleanup
+#   PostOS: Create OOBE.json
 #=======================================================================
-$OOBEJson = @"
-{
+
+$OOBEJson = @"{
     "Updates": [],
     "RemoveAppx": [
-        "MicrosoftTeams",
-        "Microsoft.GamingApp",
-        "Microsoft.GetHelp",
-        "Microsoft.MicrosoftOfficeHub",
-        "Microsoft.MicrosoftSolitaireCollection",
-        "Microsoft.People",
-        "Microsoft.PowerAutomateDesktop",
-        "Microsoft.WindowsFeedbackHub",
-        "Microsoft.XboxGamingOverlay",
-        "Microsoft.XboxIdentityProvider",
-        "Microsoft.YourPhone"
+        "MicrosoftTeams", "Microsoft.GamingApp", "Microsoft.GetHelp",
+        "Microsoft.MicrosoftOfficeHub", "Microsoft.MicrosoftSolitaireCollection",
+        "Microsoft.People", "Microsoft.PowerAutomateDesktop",
+        "Microsoft.WindowsFeedbackHub", "Microsoft.XboxGamingOverlay",
+        "Microsoft.XboxIdentityProvider", "Microsoft.YourPhone"
     ],
     "UpdateDrivers": true,
     "UpdateWindows": true,
     "AutopilotOOBE": true,
     "GroupTagID": "$GroupTag"
-}
-"@
+}"@
 
 $OSDeployPath = "C:\ProgramData\OSDeploy"
 New-Item -Path $OSDeployPath -ItemType Directory -Force | Out-Null
@@ -103,6 +90,7 @@ $OOBEJson | Out-File -FilePath "$OSDeployPath\OOBE.json" -Encoding ascii -Force
 #=======================================================================
 #   Autopilot Configuration
 #=======================================================================
+
 $AutopilotConfig = @{
     CloudAssignedOobeConfig       = 131
     CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
@@ -118,8 +106,9 @@ New-Item -Path $AutopilotPath -ItemType Directory -Force | Out-Null
 $AutopilotConfig | Out-File -FilePath "$AutopilotPath\AutopilotConfigurationFile.json" -Encoding ascii -Force
 
 #=======================================================================
-#   Capture Hardware Hash (Optional)
+#   Capture Autopilot Hardware Hash (Optional)
 #=======================================================================
+
 $HardwareHashPath = "C:\HardwareHash.csv"
 Start-Process -FilePath "mdmdiagnosticstool.exe" -ArgumentList "-CollectHardwareHash -Output $HardwareHashPath" -Wait
 
@@ -130,19 +119,20 @@ if (Test-Path $TargetCopyPath) {
 }
 
 #=======================================================================
-#   Unattend.xml: Auto-start OOBE
+#   Apply unattend.xml to automate reboot into OOBE
 #=======================================================================
+
 $UnattendXml = @'
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
     <settings pass="oobeSystem">
-        <component name="Microsoft-Windows-International-Core" ... >
+        <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" ...>
             <InputLocale>en-US</InputLocale>
             <SystemLocale>en-US</SystemLocale>
             <UILanguage>en-US</UILanguage>
             <UserLocale>en-US</UserLocale>
         </component>
-        <component name="Microsoft-Windows-Shell-Setup" ... >
+        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" ...>
             <OOBE>
                 <HideEULAPage>true</HideEULAPage>
                 <NetworkLocation>Work</NetworkLocation>
@@ -160,11 +150,17 @@ $Panther = 'C:\Windows\Panther'
 New-Item -Path $Panther -ItemType Directory -Force | Out-Null
 $UnattendPath = "$Panther\Unattend.xml"
 $UnattendXml | Out-File -FilePath $UnattendPath -Encoding utf8 -Force
-Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
+
+try {
+    Use-WindowsUnattend -Path 'C:\' -UnattendPath $UnattendPath -Verbose
+} catch {
+    Write-Warning "Use-WindowsUnattend failed: $_"
+}
 
 #=======================================================================
 # Final Step: Reboot into OOBE
 #=======================================================================
-Write-Host "`nRebooting into OOBE for Autopilot..." -ForegroundColor Green
+
+Write-Host "\nRebooting into OOBE for Autopilot..." -ForegroundColor Green
 Stop-Transcript
-# Restart-Computer -Force
+Restart-Computer -Force
