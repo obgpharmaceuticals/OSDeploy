@@ -1,15 +1,6 @@
 Write-Host "Start Process New"
 
-$LogPath = "X:\DeployScript.log"
-if (Test-Path (Split-Path $LogPath -Parent)) {
-    try {
-        Start-Transcript -Path $LogPath -Force -ErrorAction Stop
-    } catch {
-        Write-Warning "Transcript could not be started: $_"
-    }
-} else {
-    Write-Warning "Transcript path is not writable. Skipping log."
-}
+Start-Transcript -Path "X:\DeployScript.log" -Append
 
 #=======================================================================
 #   Selection: Choose the type of system which is being deployed
@@ -172,4 +163,4 @@ try {
 
 Write-Host "\nRebooting into OOBE for Autopilot..." -ForegroundColor Green
 Stop-Transcript
-# Restart-Computer -Force
+Restart-Computer -Force
