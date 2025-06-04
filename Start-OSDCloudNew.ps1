@@ -1,6 +1,6 @@
 Write-Host "Start Process New"
 
-Start-Transcript -Path "X:\DeployScript.log" -Append
+Start-Transcript -Path "X:\DeployScript.log"
 
 #=======================================================================
 #   Selection: Choose the type of system which is being deployed
@@ -163,4 +163,4 @@ try {
 
 Write-Host "\nRebooting into OOBE for Autopilot..." -ForegroundColor Green
 Stop-Transcript
-Restart-Computer -Force
+# Restart-Computer -Force
