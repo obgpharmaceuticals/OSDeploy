@@ -1,6 +1,10 @@
 Write-Host "Start Process New"
 
-Start-Transcript -Path "X:\DeployScript.log"
+try {
+    Start-Transcript -Path "X:\DeployScript.log" -Append
+} catch {
+    Write-Warning "Failed to start transcript: $_"
+}
 
 #=======================================================================
 #   Selection: Choose the type of system which is being deployed
@@ -126,13 +130,19 @@ $UnattendXml = @'
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
     <settings pass="oobeSystem">
-        <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" ...>
+        <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64"
+            publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
+            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <InputLocale>en-US</InputLocale>
             <SystemLocale>en-US</SystemLocale>
             <UILanguage>en-US</UILanguage>
             <UserLocale>en-US</UserLocale>
         </component>
-        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" ...>
+        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64"
+            publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
+            xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <OOBE>
                 <HideEULAPage>true</HideEULAPage>
                 <NetworkLocation>Work</NetworkLocation>
@@ -162,5 +172,11 @@ try {
 #=======================================================================
 
 Write-Host "\nRebooting into OOBE for Autopilot..." -ForegroundColor Green
-Stop-Transcript
+try {
+    Stop-Transcript
+} catch {
+    Write-Warning "Failed to stop transcript: $_"
+}
+
+Start-Sleep -Seconds 5
 # Restart-Computer -Force
