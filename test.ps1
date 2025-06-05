@@ -94,25 +94,46 @@ New-Item -Path $AutopilotPath -ItemType Directory -Force | Out-Null
 $AutopilotConfig | Out-File -FilePath "$AutopilotPath\AutopilotConfigurationFile.json" -Encoding ascii -Force
 
 #=======================================================================
-#   Capture Autopilot Hardware Hash and Autopilot Logs
+#   Write Post-Deployment Autopilot Registration Script
 #=======================================================================
 
-$HardwareHashPath = "C:\HardwareHash.csv"
-if (Get-Command "mdmdiagnosticstool.exe" -ErrorAction SilentlyContinue) {
-    Start-Process -FilePath "mdmdiagnosticstool.exe" -ArgumentList "-CollectHardwareHash -Output $HardwareHashPath" -Wait
-    Write-Host "Hardware hash captured to $HardwareHashPath"
+$FirstLogonScript = @'
+@echo off
+PowerShell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -Command "
+$LogPath = 'C:\Windows\Temp\AutopilotRegister.log'
+Start-Transcript -Path $LogPath -Append
 
-    $DiagOutput = "C:\autopilot.cab"
-    Start-Process -FilePath "mdmdiagnosticstool.exe" -ArgumentList "-area Autopilot -cab $DiagOutput" -Wait
-    Write-Host "Autopilot diagnostics written to $DiagOutput"
-} else {
-    Write-Warning "mdmdiagnosticstool.exe not found. Skipping hardware hash and diagnostics."
-}
+try {
+    if (Get-Command 'mdmdiagnosticstool.exe' -ErrorAction SilentlyContinue) {
+        $HardwareHash = 'C:\HardwareHash.csv'
+        mdmdiagnosticstool.exe -CollectHardwareHash -Output $HardwareHash
+        Write-Output 'Hardware hash collected to $HardwareHash'
+
+        mdmdiagnosticstool.exe -area Autopilot -cab 'C:\AutopilotDiag.cab'
+        Write-Output 'Autopilot diagnostics collected.'
+    }
+
+    # Force Intune enrollment sync
+    schtasks /run /tn "Microsoft\Windows\EnterpriseMgmt\Schedule created by enrollment client for automatically setting up the device"
+    Write-Output 'Enrollment task triggered.'
+
+    # Trigger OOBE
+    rundll32.exe shell32.dll,Control_RunDLL "sysdm.cpl,,4"
+} catch {
+    Write-Output \"Error during autopilot script: $_\"
+} finally {
+    Stop-Transcript
+}"
+'@
+
+$FirstLogonPath = "C:\Windows\Setup\Scripts"
+New-Item -Path $FirstLogonPath -ItemType Directory -Force | Out-Null
+$FirstLogonScript | Out-File "$FirstLogonPath\SetupComplete.cmd" -Encoding ascii -Force
 
 #=======================================================================
-# Final Step: Stop transcript only (no unattended applied)
+# Final Step: Stop transcript and reboot
 #=======================================================================
-Write-Host "\nFinished deployment phase. No Unattend applied to allow clean OOBE boot." -ForegroundColor Green
+Write-Host "\nDeployment script complete. Rebooting into full OS..." -ForegroundColor Green
 try {
     Stop-Transcript
 } catch {
