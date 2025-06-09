@@ -36,21 +36,14 @@ do {
 } until ($GroupTag -ne "NotSet")
 
 #=======================================================================
-#   OS: Download and apply install.wim from HTTP
+#   OS: Format disk and apply install.wim from HTTP
 #=======================================================================
 
 $WimUrl = "http://10.1.192.20/install.wim"
-$WimLocal = "X:\install.wim"
-$ImageIndex = 6  # Adjust if needed
-$TargetDrive = "C:"
-
-Write-Host "Downloading Windows image from $WimUrl..."
+$ImageIndex = 6  # Adjust this index as needed
 
 try {
-    # Download install.wim
-    Invoke-WebRequest -Uri $WimUrl -OutFile $WimLocal
-
-    Write-Host "Formatting $TargetDrive..."
+    Write-Host "Preparing disk..."
     $Disk = Get-Disk | Where-Object IsBoot -eq $true
     $Disk | Initialize-Disk -PartitionStyle GPT -PassThru | Out-Null
 
@@ -58,12 +51,14 @@ try {
     Format-Volume -Partition $Partition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false | Out-Null
 
     $TargetDrive = ($Partition | Get-Volume).DriveLetter + ":"
+    $WimLocal = "$TargetDrive\install.wim"
 
-    # Apply the image
+    Write-Host "Downloading install.wim to $WimLocal..."
+    Invoke-WebRequest -Uri $WimUrl -OutFile $WimLocal
+
     Write-Host "Applying image index $ImageIndex from $WimLocal..."
     dism /Apply-Image /ImageFile:$WimLocal /Index:$ImageIndex /ApplyDir:$TargetDrive\
 
-    # Setup boot
     Write-Host "Setting up bootloader..."
     bcdboot "$TargetDrive\Windows" /s $TargetDrive /f UEFI
 } catch {
