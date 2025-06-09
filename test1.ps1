@@ -1,7 +1,7 @@
 Write-Host "Start Process New"
 
 try {
-    Start-Transcript -Path "x:\DeployScript.log" -Append
+    Start-Transcript -Path "x:\DeployScript.log"
 } catch {}
 
 #=======================================================================
