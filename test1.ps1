@@ -1,4 +1,4 @@
-Write-Host "Start Process Test1"
+Write-Host "Start Process New Test JD"
 
 try {
     Start-Transcript -Path "C:\DeployScript.log" -Append
@@ -36,44 +36,60 @@ do {
 } until ($GroupTag -ne "NotSet")
 
 #=======================================================================
-#   OS: Format disk and apply install.wim from HTTP
+#   OS: Download WIM before wiping the disk
 #=======================================================================
 
 $WimUrl = "http://10.1.192.20/install.wim"
 $ImageIndex = 6
 
-try {
-    Write-Host "Locating target disk..."
-    $Disk = Get-Disk | Where-Object { $_.PartitionStyle -eq 'RAW' -or $_.IsSystem -ne $true } | Select-Object -First 1
+# Step 1: Locate the target disk to wipe
+$TargetDisk = Get-Disk | Where-Object {
+    $_.IsBoot -eq $false -and $_.IsSystem -eq $false -and $_.IsOffline -eq $false -and $_.IsReadOnly -eq $false
+} | Sort-Object -Property Size -Descending | Select-Object -First 1
 
-    if (-not $Disk) {
-        throw "No suitable disk found for deployment."
-    }
-
-    Write-Host "Wiping and initializing disk $($Disk.Number)..."
-    $Disk | Clear-Disk -RemoveData -Confirm:$false
-    $Disk | Initialize-Disk -PartitionStyle GPT -PassThru | Out-Null
-
-    $Partition = New-Partition -DiskNumber $Disk.Number -UseMaximumSize -AssignDriveLetter
-    Format-Volume -Partition $Partition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false | Out-Null
-
-    $TargetDrive = ($Partition | Get-Volume).DriveLetter + ":"
-    $WimLocal = "$TargetDrive\install.wim"
-
-    Write-Host "Downloading install.wim from $WimUrl..."
-    Invoke-WebRequest -Uri $WimUrl -OutFile $WimLocal
-
-    Write-Host "Applying image index $ImageIndex from $WimLocal..."
-    dism /Apply-Image /ImageFile:$WimLocal /Index:$ImageIndex /ApplyDir:$TargetDrive\
-
-    Write-Host "Setting up bootloader..."
-    bcdboot "$TargetDrive\Windows" /s $TargetDrive /f UEFI
-
-    Remove-Item -Path $WimLocal -Force
-} catch {
-    Write-Warning "Deployment failed: $_"
-    Exit 1
+if (-not $TargetDisk) {
+    throw "No suitable target disk found for Windows deployment."
 }
+
+# Step 2: Find a volume NOT on the target disk to store the WIM
+$SafeVolumes = Get-Volume | Where-Object {
+    $_.DriveLetter -ne $null -and
+    $_.FileSystem -ne $null -and
+    ($_ | Get-Partition).DiskNumber -ne $TargetDisk.Number
+}
+
+$DownloadVolume = $SafeVolumes | Sort-Object -Property SizeRemaining -Descending | Select-Object -First 1
+
+if (-not $DownloadVolume) {
+    throw "No volume found to safely store install.wim before wiping disk $($TargetDisk.Number)."
+}
+
+$WimLocal = "$($DownloadVolume.DriveLetter):\install.wim"
+
+Write-Host "Downloading install.wim to $WimLocal..."
+Invoke-WebRequest -Uri $WimUrl -OutFile $WimLocal
+
+#=======================================================================
+#   Format target disk and apply image
+#=======================================================================
+
+Write-Host "Wiping disk $($TargetDisk.Number)..."
+$TargetDisk | Clear-Disk -RemoveData -Confirm:$false
+$TargetDisk | Initialize-Disk -PartitionStyle GPT -PassThru | Out-Null
+
+$Partition = New-Partition -DiskNumber $TargetDisk.Number -UseMaximumSize -AssignDriveLetter
+Format-Volume -Partition $Partition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false | Out-Null
+
+$TargetDrive = ($Partition | Get-Volume).DriveLetter + ":"
+
+Write-Host "Applying Windows image from $WimLocal to $TargetDrive..."
+dism /Apply-Image /ImageFile:$WimLocal /Index:$ImageIndex /ApplyDir:$TargetDrive\
+
+Write-Host "Setting up bootloader..."
+bcdboot "$TargetDrive\Windows" /s $TargetDrive /f UEFI
+
+# Optional: Clean up downloaded WIM
+Remove-Item -Path $WimLocal -Force
 
 #=======================================================================
 #   PostOS: Create OOBE.json
@@ -119,7 +135,7 @@ New-Item -Path $AutopilotPath -ItemType Directory -Force | Out-Null
 $AutopilotConfig | Out-File -FilePath "$AutopilotPath\AutopilotConfigurationFile.json" -Encoding ascii -Force
 
 #=======================================================================
-#   Write Post-Deployment Autopilot Registration Script
+#   First Boot Script: SetupComplete.cmd for Autopilot
 #=======================================================================
 
 $FirstLogonScript = @'
@@ -156,6 +172,7 @@ $FirstLogonScript | Out-File "$FirstLogonPath\SetupComplete.cmd" -Encoding ascii
 #=======================================================================
 # Final Step: Stop transcript and reboot
 #=======================================================================
+
 Write-Host "`nDeployment script complete. Rebooting into full OS..." -ForegroundColor Green
 try {
     Stop-Transcript
