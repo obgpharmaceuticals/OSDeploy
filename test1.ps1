@@ -1,4 +1,4 @@
-Write-Host "Start Process New"
+Write-Host "Start Process Test1"
 
 try {
     Start-Transcript -Path "C:\DeployScript.log" -Append
@@ -40,11 +40,18 @@ do {
 #=======================================================================
 
 $WimUrl = "http://10.1.192.20/install.wim"
-$ImageIndex = 6  # Adjust this index as needed
+$ImageIndex = 6
 
 try {
-    Write-Host "Preparing disk..."
-    $Disk = Get-Disk | Where-Object IsBoot -eq $true
+    Write-Host "Locating target disk..."
+    $Disk = Get-Disk | Where-Object { $_.PartitionStyle -eq 'RAW' -or $_.IsSystem -ne $true } | Select-Object -First 1
+
+    if (-not $Disk) {
+        throw "No suitable disk found for deployment."
+    }
+
+    Write-Host "Wiping and initializing disk $($Disk.Number)..."
+    $Disk | Clear-Disk -RemoveData -Confirm:$false
     $Disk | Initialize-Disk -PartitionStyle GPT -PassThru | Out-Null
 
     $Partition = New-Partition -DiskNumber $Disk.Number -UseMaximumSize -AssignDriveLetter
@@ -53,7 +60,7 @@ try {
     $TargetDrive = ($Partition | Get-Volume).DriveLetter + ":"
     $WimLocal = "$TargetDrive\install.wim"
 
-    Write-Host "Downloading install.wim to $WimLocal..."
+    Write-Host "Downloading install.wim from $WimUrl..."
     Invoke-WebRequest -Uri $WimUrl -OutFile $WimLocal
 
     Write-Host "Applying image index $ImageIndex from $WimLocal..."
@@ -61,6 +68,8 @@ try {
 
     Write-Host "Setting up bootloader..."
     bcdboot "$TargetDrive\Windows" /s $TargetDrive /f UEFI
+
+    Remove-Item -Path $WimLocal -Force
 } catch {
     Write-Warning "Deployment failed: $_"
     Exit 1
@@ -87,7 +96,7 @@ $OOBEJson = @"
 }
 "@
 
-$OSDeployPath = "C:\ProgramData\OSDeploy"
+$OSDeployPath = "$TargetDrive\ProgramData\OSDeploy"
 New-Item -Path $OSDeployPath -ItemType Directory -Force | Out-Null
 $OOBEJson | Out-File -FilePath "$OSDeployPath\OOBE.json" -Encoding ascii -Force
 
@@ -105,7 +114,7 @@ $AutopilotConfig = @{
     CloudAssignedGroupTag         = $GroupTag
 } | ConvertTo-Json -Depth 10
 
-$AutopilotPath = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
+$AutopilotPath = "$TargetDrive\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
 New-Item -Path $AutopilotPath -ItemType Directory -Force | Out-Null
 $AutopilotConfig | Out-File -FilePath "$AutopilotPath\AutopilotConfigurationFile.json" -Encoding ascii -Force
 
@@ -129,11 +138,9 @@ try {
         Write-Output 'Autopilot diagnostics collected.'
     }
 
-    # Force Intune enrollment sync
     schtasks /run /tn "Microsoft\Windows\EnterpriseMgmt\Schedule created by enrollment client for automatically setting up the device"
     Write-Output 'Enrollment task triggered.'
 
-    # Trigger OOBE
     rundll32.exe shell32.dll,Control_RunDLL "sysdm.cpl,,4"
 } catch {
     Write-Output \"Error during autopilot script: $_\"
@@ -142,7 +149,7 @@ try {
 }"
 '@
 
-$FirstLogonPath = "C:\Windows\Setup\Scripts"
+$FirstLogonPath = "$TargetDrive\Windows\Setup\Scripts"
 New-Item -Path $FirstLogonPath -ItemType Directory -Force | Out-Null
 $FirstLogonScript | Out-File "$FirstLogonPath\SetupComplete.cmd" -Encoding ascii -Force
 
