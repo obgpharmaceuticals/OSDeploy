@@ -1,4 +1,4 @@
-Write-Host "Start Process New 3"
+Write-Host "Start Process New"
 
 try {
     Start-Transcript -Path "x:\DeployScript.log" -Append
@@ -7,32 +7,49 @@ try {
 }
 
 #=======================================================================
-#   Disk Preparation: Wipe disk and create D: and C: partitions
+#   Disk Partitioning: Clean disk, create 10GB D: and remaining C:
 #=======================================================================
-Write-Host "Detecting target disk..."
-$TargetDisk = Get-Disk | Where-Object {
-    $_.OperationalStatus -eq 'Online' -and $_.PartitionStyle -ne 'RAW' -and $_.Size -gt 30GB
-} | Sort-Object Size -Descending | Select-Object -First 1
+
+Write-Host "Selecting disk to clean and partition..."
+
+# Select first online disk (ignores partition style, type, etc)
+$TargetDisk = Get-Disk | Where-Object { $_.OperationalStatus -eq 'Online' } | Sort-Object Size -Descending | Select-Object -First 1
 
 if (-not $TargetDisk) {
-    throw "❌ No suitable target disk found."
+    throw "No online disk found to partition."
 }
 
-Write-Host "Wiping disk $($TargetDisk.Number)..."
-$TargetDisk | Clear-Disk -RemoveData -Confirm:$false
-Initialize-Disk -Number $TargetDisk.Number -PartitionStyle GPT
+Write-Host "Selected disk number $($TargetDisk.Number) - Size: $([math]::Round($TargetDisk.Size /1GB, 2)) GB"
 
-# Create 10GB D: partition for temporary use
-Write-Host "Creating 10GB temporary partition (D:)..."
-$TempPart = New-Partition -DiskNumber $TargetDisk.Number -Size 10GB -AssignDriveLetter
-Format-Volume -Partition $TempPart -FileSystem NTFS -NewFileSystemLabel "TempWIM" -Confirm:$false
-Set-Partition -DriveLetter $TempPart.DriveLetter -NewDriveLetter 'D'
+# Clean disk (WARNING: deletes ALL data)
+Write-Host "Cleaning disk $($TargetDisk.Number)..."
+Clear-Disk -Number $TargetDisk.Number -RemoveData -Confirm:$false
 
-# Create remaining space as C: (Windows)
-Write-Host "Creating main OS partition (C:)..."
-$OSPart = New-Partition -DiskNumber $TargetDisk.Number -UseMaximumSize -AssignDriveLetter
-Format-Volume -Partition $OSPart -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
-Set-Partition -DriveLetter $OSPart.DriveLetter -NewDriveLetter 'C'
+# Initialize disk as GPT
+Write-Host "Initializing disk $($TargetDisk.Number) as GPT..."
+Initialize-Disk -Number $TargetDisk.Number -PartitionStyle GPT -PassThru | Out-Null
+
+# Create 10GB D: partition
+Write-Host "Creating 10GB D: partition..."
+$PartitionD = New-Partition -DiskNumber $TargetDisk.Number -Size 10GB -AssignDriveLetter
+
+# Format D: partition as NTFS
+Format-Volume -Partition $PartitionD -FileSystem NTFS -NewFileSystemLabel "Data" -Confirm:$false
+
+# Assign drive letter D (in case not auto assigned)
+Set-Partition -DiskNumber $TargetDisk.Number -PartitionNumber $PartitionD.PartitionNumber -NewDriveLetter D
+
+# Create remaining partition as C:
+Write-Host "Creating remaining space as C: partition..."
+$PartitionC = New-Partition -DiskNumber $TargetDisk.Number -UseMaximumSize -AssignDriveLetter
+
+# Format C: partition as NTFS
+Format-Volume -Partition $PartitionC -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
+
+# Assign drive letter C (in case not auto assigned)
+Set-Partition -DiskNumber $TargetDisk.Number -PartitionNumber $PartitionC.PartitionNumber -NewDriveLetter C
+
+Write-Host "Disk partitioning complete."
 
 #=======================================================================
 #   Selection: Choose the type of system which is being deployed
@@ -64,31 +81,37 @@ do {
 } until ($GroupTag -ne "NotSet")
 
 #=======================================================================
-#   Download the install.wim from HTTP server to D:\
+#   Download install.wim to D:\
 #=======================================================================
 
 $WimUrl = "http://10.1.192.20/install.wim"
-$WimPath = "D:\install.wim"
+$LocalWimPath = "D:\install.wim"
 
-Write-Host "Downloading install.wim from $WimUrl to $WimPath ..."
+Write-Host "Downloading install.wim from $WimUrl to $LocalWimPath ..."
 try {
-    Invoke-WebRequest -Uri $WimUrl -OutFile $WimPath -UseBasicParsing -Verbose
-    Write-Host "Download completed."
+    Invoke-WebRequest -Uri $WimUrl -OutFile $LocalWimPath -UseBasicParsing -Verbose
+    Write-Host "Download complete."
 } catch {
-    Write-Error "Failed to download install.wim: $_"
-    throw
+    throw "Failed to download install.wim: $_"
 }
 
 #=======================================================================
-#   Apply the WIM image to C:\
+#   OS: Set up OSDCloud parameters to use local WIM image
 #=======================================================================
 
-Write-Host "Applying Windows image to C: ..."
-$dismArgs = "/Apply-Image /ImageFile:`"$WimPath`" /Index:1 /ApplyDir:C:\"
-$process = Start-Process -FilePath dism.exe -ArgumentList $dismArgs -Wait -NoNewWindow -PassThru
-if ($process.ExitCode -ne 0) {
-    throw "DISM failed with exit code $($process.ExitCode)"
+$Params = @{
+    OSName       = "Windows 11 23H2 x64"
+    OSEdition    = "Enterprise"
+    OSLanguage   = "en-gb"
+    OSLicense    = "Volume"
+    ZTI          = $true
+    Wim          = $LocalWimPath
+    WimIndex     = 1
+    TargetDrive  = "C:"
 }
+
+Write-Host "Starting OSDCloud deployment using local WIM image..."
+Start-OSDCloud @Params
 
 #=======================================================================
 #   PostOS: Create OOBE.json
