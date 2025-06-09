@@ -1,10 +1,8 @@
-Write-Host "Start Process New Test JD"
+Write-Host "Start Process New"
 
 try {
-    Start-Transcript -Path "x:\DeployScript.log" -Append
-} catch {
-    Write-Warning "Failed to start transcript: $_"
-}
+    Start-Transcript -Path "C:\DeployScript.log" -Append
+} catch {}
 
 #=======================================================================
 #   Selection: Choose the type of system which is being deployed
@@ -36,41 +34,43 @@ do {
 } until ($GroupTag -ne "NotSet")
 
 #=======================================================================
-#   OS: Download WIM before wiping the disk
+#   Download WIM before touching disks
 #=======================================================================
 
 $WimUrl = "http://10.1.192.20/install.wim"
 $ImageIndex = 6
 
-# Step 1: Locate the target disk to wipe
+# Detect target disk (largest non-boot)
 $TargetDisk = Get-Disk | Where-Object {
     $_.IsBoot -eq $false -and $_.IsSystem -eq $false -and $_.IsOffline -eq $false -and $_.IsReadOnly -eq $false
-} | Sort-Object -Property Size -Descending | Select-Object -First 1
+} | Sort-Object Size -Descending | Select-Object -First 1
 
 if (-not $TargetDisk) {
-    throw "No suitable target disk found for Windows deployment."
+    throw "No suitable disk found."
 }
 
-# Step 2: Find a volume NOT on the target disk to store the WIM
-$SafeVolumes = Get-Volume | Where-Object {
+# Find safe download location
+$DownloadVolume = Get-Volume | Where-Object {
     $_.DriveLetter -ne $null -and
     $_.FileSystem -ne $null -and
     ($_ | Get-Partition).DiskNumber -ne $TargetDisk.Number
-}
-
-$DownloadVolume = $SafeVolumes | Sort-Object -Property SizeRemaining -Descending | Select-Object -First 1
+} | Sort-Object SizeRemaining -Descending | Select-Object -First 1
 
 if (-not $DownloadVolume) {
-    throw "No volume found to safely store install.wim before wiping disk $($TargetDisk.Number)."
+    throw "No safe location to download WIM."
 }
 
 $WimLocal = "$($DownloadVolume.DriveLetter):\install.wim"
 
 Write-Host "Downloading install.wim to $WimLocal..."
-Invoke-WebRequest -Uri $WimUrl -OutFile $WimLocal
+try {
+    Start-BitsTransfer -Source $WimUrl -Destination $WimLocal
+} catch {
+    throw "Download failed: $_"
+}
 
 #=======================================================================
-#   Format target disk and apply image
+#   Wipe Disk and Apply WIM
 #=======================================================================
 
 Write-Host "Wiping disk $($TargetDisk.Number)..."
@@ -82,17 +82,17 @@ Format-Volume -Partition $Partition -FileSystem NTFS -NewFileSystemLabel "Window
 
 $TargetDrive = ($Partition | Get-Volume).DriveLetter + ":"
 
-Write-Host "Applying Windows image from $WimLocal to $TargetDrive..."
+Write-Host "Applying image..."
 dism /Apply-Image /ImageFile:$WimLocal /Index:$ImageIndex /ApplyDir:$TargetDrive\
 
-Write-Host "Setting up bootloader..."
+Write-Host "Installing bootloader..."
 bcdboot "$TargetDrive\Windows" /s $TargetDrive /f UEFI
 
-# Optional: Clean up downloaded WIM
-Remove-Item -Path $WimLocal -Force
+# Optional: Remove WIM
+Remove-Item -Path $WimLocal -Force -ErrorAction SilentlyContinue
 
 #=======================================================================
-#   PostOS: Create OOBE.json
+#   Create OOBE.json
 #=======================================================================
 
 $OOBEJson = @"
@@ -117,7 +117,7 @@ New-Item -Path $OSDeployPath -ItemType Directory -Force | Out-Null
 $OOBEJson | Out-File -FilePath "$OSDeployPath\OOBE.json" -Encoding ascii -Force
 
 #=======================================================================
-#   Autopilot Configuration
+#   Create AutopilotConfigurationFile.json
 #=======================================================================
 
 $AutopilotConfig = @{
@@ -135,7 +135,7 @@ New-Item -Path $AutopilotPath -ItemType Directory -Force | Out-Null
 $AutopilotConfig | Out-File -FilePath "$AutopilotPath\AutopilotConfigurationFile.json" -Encoding ascii -Force
 
 #=======================================================================
-#   First Boot Script: SetupComplete.cmd for Autopilot
+#   SetupComplete.cmd for Autopilot Registration
 #=======================================================================
 
 $FirstLogonScript = @'
@@ -148,16 +148,11 @@ try {
     if (Get-Command 'mdmdiagnosticstool.exe' -ErrorAction SilentlyContinue) {
         $HardwareHash = 'C:\HardwareHash.csv'
         mdmdiagnosticstool.exe -CollectHardwareHash -Output $HardwareHash
-        Write-Output 'Hardware hash collected to $HardwareHash'
-
         mdmdiagnosticstool.exe -area Autopilot -cab 'C:\AutopilotDiag.cab'
-        Write-Output 'Autopilot diagnostics collected.'
     }
 
-    schtasks /run /tn "Microsoft\Windows\EnterpriseMgmt\Schedule created by enrollment client for automatically setting up the device"
-    Write-Output 'Enrollment task triggered.'
-
-    rundll32.exe shell32.dll,Control_RunDLL "sysdm.cpl,,4"
+    schtasks /run /tn 'Microsoft\Windows\EnterpriseMgmt\Schedule created by enrollment client for automatically setting up the device'
+    rundll32.exe shell32.dll,Control_RunDLL 'sysdm.cpl,,4'
 } catch {
     Write-Output \"Error during autopilot script: $_\"
 } finally {
@@ -170,15 +165,10 @@ New-Item -Path $FirstLogonPath -ItemType Directory -Force | Out-Null
 $FirstLogonScript | Out-File "$FirstLogonPath\SetupComplete.cmd" -Encoding ascii -Force
 
 #=======================================================================
-# Final Step: Stop transcript and reboot
+#   Finalize
 #=======================================================================
 
-Write-Host "`nDeployment script complete. Rebooting into full OS..." -ForegroundColor Green
-try {
-    Stop-Transcript
-} catch {
-    Write-Warning "Failed to stop transcript: $_"
-}
-
+Write-Host "`nDeployment complete. Rebooting..." -ForegroundColor Green
 Start-Sleep -Seconds 5
+try { Stop-Transcript } catch {}
 # Restart-Computer -Force
