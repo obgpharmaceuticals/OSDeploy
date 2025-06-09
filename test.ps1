@@ -1,7 +1,7 @@
 Write-Host "Start Process New"
 
 try {
-    Start-Transcript -Path "X:\DeployScript.log" -Append
+    Start-Transcript -Path "D:\DeployScript.log" -Append
 } catch {
     Write-Warning "Failed to start transcript: $_"
 }
