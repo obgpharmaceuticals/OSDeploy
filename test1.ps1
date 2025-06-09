@@ -1,7 +1,7 @@
 Write-Host "Start Process New Test JD"
 
 try {
-    Start-Transcript -Path "C:\DeployScript.log" -Append
+    Start-Transcript -Path "x:\DeployScript.log" -Append
 } catch {
     Write-Warning "Failed to start transcript: $_"
 }
