@@ -1,9 +1,10 @@
 Write-Host "Starting Deployment Script..." -ForegroundColor Cyan
 
-try {
-    Start-Transcript -Path "X:\DeployScript.log" -Append
-} catch {
-    Write-Warning "Failed to start transcript: $_"
+$LogFile = "X:\DeployScript.log"
+"[$(Get-Date -Format 'u')] Starting Deployment Script..." | Out-File $LogFile -Append
+function Log {
+    param([string]$Message)
+    "[$(Get-Date -Format 'u')] $Message" | Out-File $LogFile -Append
 }
 
 #=================== Disk Setup (UEFI GPT Bootable) ===================#
