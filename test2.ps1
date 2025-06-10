@@ -1,79 +1,66 @@
-Write-Host "=== Start Deployment Process ===" -ForegroundColor Cyan
+Write-Host "Start Process Test2"
 
-#=================== Initialize Logging ===================#
-function Start-DeploymentLog {
-    $LogPath = "X:\DeployScript.log"
-    try {
-        Start-Transcript -Path $LogPath -Append
-    } catch {
-        Write-Warning "Failed to start transcript: $_"
+try {
+    Start-Transcript -Path "X:\DeployScript.log" -Append
+} catch {
+    Write-Warning "Failed to start transcript: $_"
+}
+
+#=================== Disk Setup ===================#
+$Disk = Get-Disk | Where-Object {
+    ($_.OperationalStatus -eq 'Online') -and
+    (($_.PartitionStyle -eq 'RAW') -or ($_.Size -gt 30GB))
+} | Sort-Object -Property Size -Descending | Select-Object -First 1
+
+if (-not $Disk) { throw "No suitable target disk found." }
+
+$DiskNumber = $Disk.Number
+Write-Host "Cleaning and partitioning Disk $DiskNumber..."
+
+Clear-Disk -Number $DiskNumber -RemoveData -Confirm:$false
+Initialize-Disk -Number $DiskNumber -PartitionStyle GPT
+
+# Create 10GB partition for WIM storage (D:)
+$PartitionD = New-Partition -DiskNumber $DiskNumber -Size 10GB
+Set-Partition -PartitionNumber $PartitionD.PartitionNumber -DiskNumber $DiskNumber -NewDriveLetter "D"
+Format-Volume -Partition $PartitionD -FileSystem NTFS -NewFileSystemLabel "Data" -Confirm:$false
+
+# Create Windows partition (rest of disk as C:)
+$PartitionC = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
+Set-Partition -PartitionNumber $PartitionC.PartitionNumber -DiskNumber $DiskNumber -NewDriveLetter "C"
+Format-Volume -Partition $PartitionC -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
+
+#=================== WIM Download ===================#
+$WimUrl = "http://10.1.192.20/install.wim"
+$LocalWim = "D:\install.wim"
+Write-Host "Downloading WIM from $WimUrl..."
+Invoke-WebRequest -Uri $WimUrl -OutFile $LocalWim
+
+#=================== Apply WIM with DISM ===================#
+Write-Host "Applying UK English Windows image to C: drive..."
+dism.exe /Apply-Image /ImageFile:$LocalWim /Index:1 /ApplyDir:C:\
+
+#=================== Setup Boot Configuration ===================#
+bcdboot C:\Windows /s C: /f UEFI
+
+#=================== Device Type Prompt ===================#
+$GroupTag = "NotSet"
+do {
+    Write-Host "Select System Type:" -ForegroundColor Yellow
+    Write-Host "1: Productivity Desktop"
+    Write-Host "2: Productivity Laptop"
+    Write-Host "3: Line of Business"
+    $choice = Read-Host "Enter choice"
+    switch ($choice) {
+        '1' { $GroupTag = "ProductivityDesktop" }
+        '2' { $GroupTag = "ProductivityLaptop" }
+        '3' { $GroupTag = "LineOfBusinessDesktop" }
+        default { Write-Host "Invalid choice"; $GroupTag = "NotSet" }
     }
-}
+} until ($GroupTag -ne "NotSet")
 
-#=================== Disk Partitioning ===================#
-function Initialize-DiskLayout {
-    Write-Host "Locating target disk..."
-    $Disk = Get-Disk | Where-Object { ($_.OperationalStatus -eq 'Online' -and $_.PartitionStyle -eq 'RAW') -or $_.Size -gt 30GB } | Sort-Object Size -Descending | Select-Object -First 1
-    if (-not $Disk) { throw "No suitable target disk found." }
-
-    $DiskNumber = $Disk.Number
-    Write-Host "Preparing Disk $DiskNumber..."
-
-    Clear-Disk -Number $DiskNumber -RemoveData -Confirm:$false
-    Initialize-Disk -Number $DiskNumber -PartitionStyle GPT
-
-    # Data Partition (10GB)
-    $PartitionD = New-Partition -DiskNumber $DiskNumber -Size 10GB -AssignDriveLetter
-    Format-Volume -Partition $PartitionD -FileSystem NTFS -NewFileSystemLabel "Data" -Confirm:$false
-    Set-Partition -PartitionNumber $PartitionD.PartitionNumber -DiskNumber $DiskNumber -NewDriveLetter "D"
-
-    # Windows Partition (Remaining)
-    $PartitionC = New-Partition -DiskNumber $DiskNumber -UseMaximumSize -AssignDriveLetter
-    Format-Volume -Partition $PartitionC -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
-    Set-Partition -PartitionNumber $PartitionC.PartitionNumber -DiskNumber $DiskNumber -NewDriveLetter "C"
-}
-
-#=================== Download and Apply WIM ===================#
-function Deploy-WindowsImage {
-    param (
-        [string]$WimUrl = "http://10.1.192.20/install.wim"
-    )
-    $LocalWim = "D:\install.wim"
-    Write-Host "Downloading Windows Image from $WimUrl..."
-    Invoke-WebRequest -Uri $WimUrl -OutFile $LocalWim
-
-    Write-Host "Applying WIM to C: drive..."
-    dism.exe /Apply-Image /ImageFile:$LocalWim /Index:1 /ApplyDir:C:\
-
-    Write-Host "Configuring bootloader..."
-    bcdboot C:\Windows /s C: /f UEFI
-}
-
-#=================== Prompt for Device Type ===================#
-function Get-DeviceGroupTag {
-    $Tag = "NotSet"
-    do {
-        Write-Host "Select System Type:" -ForegroundColor Yellow
-        Write-Host "1: Productivity Desktop"
-        Write-Host "2: Productivity Laptop"
-        Write-Host "3: Line of Business"
-        $input = Read-Host "Enter choice"
-        switch ($input) {
-            '1' { $Tag = "ProductivityDesktop" }
-            '2' { $Tag = "ProductivityLaptop" }
-            '3' { $Tag = "LineOfBusinessDesktop" }
-            default { Write-Host "Invalid selection." }
-        }
-    } until ($Tag -ne "NotSet")
-    return $Tag
-}
-
-#=================== Generate OOBE.json ===================#
-function Write-OOBEConfig {
-    param (
-        [string]$GroupTag
-    )
-    $OOBEJson = @"
+#=================== Write OOBE.json ===================#
+$OOBEJson = @"
 {
     "Updates": [],
     "RemoveAppx": [
@@ -89,38 +76,33 @@ function Write-OOBEConfig {
     "GroupTagID": "$GroupTag"
 }
 "@
-    $Path = "C:\ProgramData\OSDeploy"
-    New-Item -Path $Path -ItemType Directory -Force | Out-Null
-    $OOBEJson | Out-File "$Path\OOBE.json" -Encoding ascii -Force
-}
 
-#=================== Generate Autopilot JSON ===================#
-function Write-AutopilotConfig {
-    param (
-        [string]$GroupTag
-    )
-    $AutopilotJson = @{
-        CloudAssignedOobeConfig       = 131
-        CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
-        CloudAssignedDomainJoinMethod = 0
-        ZtdCorrelationId              = (New-Guid).Guid
-        CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
-        CloudAssignedUserUpn          = ""
-        CloudAssignedGroupTag         = $GroupTag
-    } | ConvertTo-Json -Depth 10
+$OOBEPath = "C:\ProgramData\OSDeploy"
+New-Item -Path $OOBEPath -ItemType Directory -Force | Out-Null
+$OOBEJson | Out-File "$OOBEPath\OOBE.json" -Encoding ascii -Force
 
-    $Path = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
-    New-Item -Path $Path -ItemType Directory -Force | Out-Null
-    $AutopilotJson | Out-File "$Path\AutopilotConfigurationFile.json" -Encoding ascii -Force
-}
+#=================== Write Autopilot Config ===================#
+$AutoPilotJson = @{
+    CloudAssignedOobeConfig       = 131
+    CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+    CloudAssignedDomainJoinMethod = 0
+    ZtdCorrelationId              = (New-Guid).Guid
+    CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
+    CloudAssignedUserUpn          = ""
+    CloudAssignedGroupTag         = $GroupTag
+} | ConvertTo-Json -Depth 10
 
-#=================== SetupComplete Script ===================#
-function Write-SetupComplete {
-    $ScriptContent = @'
+$AutoPilotPath = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
+New-Item -Path $AutoPilotPath -ItemType Directory -Force | Out-Null
+$AutoPilotJson | Out-File "$AutoPilotPath\AutopilotConfigurationFile.json" -Encoding ascii -Force
+
+#=================== SetupComplete.cmd ===================#
+$FirstLogonScript = @'
 @echo off
 PowerShell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -Command "
 $LogPath = 'C:\Windows\Temp\AutopilotRegister.log'
 Start-Transcript -Path $LogPath -Append
+
 try {
     if (Get-Command 'mdmdiagnosticstool.exe' -ErrorAction SilentlyContinue) {
         $HardwareHash = 'C:\HardwareHash.csv'
@@ -142,38 +124,17 @@ try {
 }"
 '@
 
-    $SetupPath = "C:\Windows\Setup\Scripts"
-    New-Item -Path $SetupPath -ItemType Directory -Force | Out-Null
-    $ScriptContent | Out-File "$SetupPath\SetupComplete.cmd" -Encoding ascii -Force
+$SetupScripts = "C:\Windows\Setup\Scripts"
+New-Item -Path $SetupScripts -ItemType Directory -Force | Out-Null
+$FirstLogonScript | Out-File "$SetupScripts\SetupComplete.cmd" -Encoding ascii -Force
+
+#=================== Finalize ===================#
+try {
+    Stop-Transcript
+} catch {
+    Write-Warning "Failed to stop transcript: $_"
 }
 
-#=================== Record Deployment Info ===================#
-function Write-DeploymentInfo {
-    param (
-        [string]$GroupTag
-    )
-    @"
-Deployment Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
-Group Tag: $GroupTag
-Deployed By: OSDCloud PXE
-"@ | Out-File "C:\ProgramData\OSDeploy\DeploymentInfo.txt" -Encoding utf8 -Force
-}
-
-#=================== Final Reboot ===================#
-function Reboot-System {
-    Write-Host "`nDeployment complete. Rebooting into full OS..." -ForegroundColor Green
-    Start-Sleep -Seconds 5
-    Restart-Computer -Force
-}
-
-#=================== Execute Deployment ===================#
-Start-DeploymentLog
-Initialize-DiskLayout
-Deploy-WindowsImage
-$GroupTag = Get-DeviceGroupTag
-Write-OOBEConfig -GroupTag $GroupTag
-Write-AutopilotConfig -GroupTag $GroupTag
-Write-SetupComplete
-Write-DeploymentInfo -GroupTag $GroupTag
-Stop-Transcript
-Reboot-System
+Write-Host "`nDeployment complete. Rebooting into full OS..." -ForegroundColor Green
+Start-Sleep -Seconds 5
+# Restart-Computer -Force
