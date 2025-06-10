@@ -1,59 +1,92 @@
-Write-Host "Starting Deployment Script..." -ForegroundColor Cyan
-
+# ========== Logging Setup ==========
 $LogFile = "X:\DeployScript.log"
-"[$(Get-Date -Format 'u')] Starting Deployment Script..." | Out-File $LogFile -Append
-function Log {
-    param([string]$Message)
-    "[$(Get-Date -Format 'u')] $Message" | Out-File $LogFile -Append
-}
+function Log { param($msg); "[$(Get-Date -Format 'u')] $msg" | Out-File $LogFile -Append }
 
-#=================== Disk Setup (UEFI GPT Bootable) ===================#
+Log "=== Starting Windows 11 Deployment ==="
+
+# ========== Select Target Disk ==========
 $Disk = Get-Disk | Where-Object {
-    ($_.OperationalStatus -eq 'Online') -and 
-    (($_.PartitionStyle -eq 'RAW') -or ($_.Size -gt 30GB))
+    $_.OperationalStatus -eq 'Online' -and
+    ($_.PartitionStyle -eq 'RAW' -or $_.Size -gt 30GB)
 } | Sort-Object Size -Descending | Select-Object -First 1
 
-if (-not $Disk) { throw "No suitable target disk found." }
+if (-not $Disk) {
+    Log "❌ No suitable target disk found."
+    exit 1
+}
 
 $DiskNumber = $Disk.Number
-Write-Host "Cleaning and partitioning Disk $DiskNumber..."
+Log "✔ Targeting Disk $DiskNumber"
 
-Clear-Disk -Number $DiskNumber -RemoveData -Confirm:$false
-Initialize-Disk -Number $DiskNumber -PartitionStyle GPT
+# ========== Disk Partitioning ==========
+try {
+    Clear-Disk -Number $DiskNumber -RemoveData -Confirm:$false
+    Initialize-Disk -Number $DiskNumber -PartitionStyle GPT
+    Log "✔ Disk cleared and initialized"
+    
+    # EFI System Partition
+    $EFI = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" -AssignDriveLetter
+    Format-Volume -Partition $EFI -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
+    Log "✔ EFI partition created"
 
-# 1. EFI System Partition - 100MB
-$ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}" -AssignDriveLetter
-Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
+    # Microsoft Reserved Partition (no format, no letter)
+    New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
+    Log "✔ MSR partition created"
 
-# 2. Microsoft Reserved Partition - 16MB
-New-Partition -DiskNumber $DiskNumber -Size 16MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
+    # Primary partition (C:)
+    $Primary = New-Partition -DiskNumber $DiskNumber -UseMaximumSize -AssignDriveLetter
+    Format-Volume -Partition $Primary -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
+    Set-Partition -PartitionNumber $Primary.PartitionNumber -DiskNumber $DiskNumber -NewDriveLetter "C"
+    Log "✔ Windows partition created and formatted as C:"
+}
+catch {
+    Log "❌ Disk partitioning failed: $_"
+    exit 1
+}
 
-# 3. Windows Partition (C:)
-$PartitionC = New-Partition -DiskNumber $DiskNumber -UseMaximumSize -AssignDriveLetter
-Format-Volume -Partition $PartitionC -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
-Set-Partition -DiskNumber $DiskNumber -PartitionNumber $PartitionC.PartitionNumber -NewDriveLetter "C"
+# ========== Optional 10GB D: Data Partition ==========
+$RemainingSize = ($Disk | Get-PartitionSupportedSize -PartitionNumber $Primary.PartitionNumber).SizeMax
+if ($RemainingSize -gt 10GB) {
+    try {
+        $Data = New-Partition -DiskNumber $DiskNumber -Size 10GB -AssignDriveLetter
+        Format-Volume -Partition $Data -FileSystem NTFS -NewFileSystemLabel "Data" -Confirm:$false
+        Set-Partition -PartitionNumber $Data.PartitionNumber -DiskNumber $DiskNumber -NewDriveLetter "D"
+        Log "✔ Optional 10GB D: data partition created"
+    } catch {
+        Log "⚠️ Failed to create optional D: partition: $_"
+    }
+}
 
-# 4. Data Partition (D:) - 10GB
-$PartitionD = New-Partition -DiskNumber $DiskNumber -Size 10GB -AssignDriveLetter
-Format-Volume -Partition $PartitionD -FileSystem NTFS -NewFileSystemLabel "Data" -Confirm:$false
-Set-Partition -DiskNumber $DiskNumber -PartitionNumber $PartitionD.PartitionNumber -NewDriveLetter "D"
-
-#=================== WIM Download ===================#
+# ========== Download and Apply WIM ==========
 $WimUrl = "http://10.1.192.20/install.wim"
-$LocalWim = "D:\install.wim"
-Write-Host "Downloading WIM from $WimUrl..."
-Invoke-WebRequest -Uri $WimUrl -OutFile $LocalWim
+$LocalWim = "C:\install.wim"
+try {
+    Log "📥 Downloading install.wim from $WimUrl"
+    Invoke-WebRequest -Uri $WimUrl -OutFile $LocalWim
+    Log "✔ Downloaded install.wim to $LocalWim"
+} catch {
+    Log "❌ Failed to download WIM: $_"
+    exit 1
+}
 
-#=================== Apply WIM Image ===================#
-Write-Host "Applying Windows image to C:..."
-dism.exe /Apply-Image /ImageFile:$LocalWim /Index:1 /ApplyDir:C:\
+try {
+    Log "📦 Applying WIM to C:"
+    dism.exe /Apply-Image /ImageFile:$LocalWim /Index:1 /ApplyDir:C:\ | Out-Null
+    Log "✔ WIM applied"
+} catch {
+    Log "❌ Failed to apply image: $_"
+    exit 1
+}
 
-#=================== Boot Configuration ===================#
-$ESPDrive = ($ESP | Get-Volume).DriveLetter + ":"
-Write-Host "Configuring boot files..."
-bcdboot C:\Windows /s $ESPDrive /f UEFI
+# ========== Configure Boot ==========
+try {
+    bcdboot C:\Windows /s $($EFI.DriveLetter): /f UEFI
+    Log "✔ Boot configuration completed"
+} catch {
+    Log "❌ Failed to configure boot: $_"
+}
 
-#=================== Prompt for Device Type ===================#
+# ========== Prompt for GroupTag ==========
 $GroupTag = "NotSet"
 do {
     Write-Host "Select System Type:" -ForegroundColor Yellow
@@ -65,33 +98,34 @@ do {
         '1' { $GroupTag = "ProductivityDesktop" }
         '2' { $GroupTag = "ProductivityLaptop" }
         '3' { $GroupTag = "LineOfBusinessDesktop" }
-        default { Write-Host "Invalid choice. Try again." }
+        default { Write-Host "Invalid choice"; $GroupTag = "NotSet" }
     }
 } until ($GroupTag -ne "NotSet")
+Log "✔ Selected GroupTag: $GroupTag"
 
-#=================== Write OOBE.json ===================#
+# ========== Write OOBE.json ==========
 $OOBEJson = @"
 {
-    "Updates": [],
-    "RemoveAppx": [
-        "MicrosoftTeams", "Microsoft.GamingApp", "Microsoft.GetHelp",
-        "Microsoft.MicrosoftOfficeHub", "Microsoft.MicrosoftSolitaireCollection",
-        "Microsoft.People", "Microsoft.PowerAutomateDesktop",
-        "Microsoft.WindowsFeedbackHub", "Microsoft.XboxGamingOverlay",
-        "Microsoft.XboxIdentityProvider", "Microsoft.YourPhone"
-    ],
-    "UpdateDrivers": true,
-    "UpdateWindows": true,
-    "AutopilotOOBE": true,
-    "GroupTagID": "$GroupTag"
+  "Updates": [],
+  "RemoveAppx": [
+    "MicrosoftTeams", "Microsoft.GamingApp", "Microsoft.GetHelp",
+    "Microsoft.MicrosoftOfficeHub", "Microsoft.MicrosoftSolitaireCollection",
+    "Microsoft.People", "Microsoft.PowerAutomateDesktop",
+    "Microsoft.WindowsFeedbackHub", "Microsoft.XboxGamingOverlay",
+    "Microsoft.XboxIdentityProvider", "Microsoft.YourPhone"
+  ],
+  "UpdateDrivers": true,
+  "UpdateWindows": true,
+  "AutopilotOOBE": true,
+  "GroupTagID": "$GroupTag"
 }
 "@
-
 $OOBEPath = "C:\ProgramData\OSDeploy"
-New-Item -Path $OOBEPath -ItemType Directory -Force | Out-Null
+New-Item -ItemType Directory -Path $OOBEPath -Force | Out-Null
 $OOBEJson | Out-File "$OOBEPath\OOBE.json" -Encoding ascii -Force
+Log "✔ Wrote OOBE.json"
 
-#=================== Write Autopilot Configuration ===================#
+# ========== Write Autopilot Config ==========
 $AutoPilotJson = @{
     CloudAssignedOobeConfig       = 131
     CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
@@ -105,46 +139,32 @@ $AutoPilotJson = @{
 $AutoPilotPath = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
 New-Item -Path $AutoPilotPath -ItemType Directory -Force | Out-Null
 $AutoPilotJson | Out-File "$AutoPilotPath\AutopilotConfigurationFile.json" -Encoding ascii -Force
+Log "✔ Wrote AutopilotConfigurationFile.json"
 
-#=================== Write SetupComplete Script ===================#
-$FirstLogonScript = @'
+# ========== SetupComplete.cmd for Hardware Hash ==========
+$SetupComplete = @'
 @echo off
 PowerShell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -Command "
 $LogPath = 'C:\Windows\Temp\AutopilotRegister.log'
-Start-Transcript -Path $LogPath -Append
-
+'Starting Autopilot Script' | Out-File $LogPath -Append
 try {
     if (Get-Command 'mdmdiagnosticstool.exe' -ErrorAction SilentlyContinue) {
-        $HardwareHash = 'C:\HardwareHash.csv'
-        mdmdiagnosticstool.exe -CollectHardwareHash -Output $HardwareHash
-        Write-Output 'Hardware hash collected to $HardwareHash'
-
+        mdmdiagnosticstool.exe -CollectHardwareHash -Output 'C:\HardwareHash.csv'
         mdmdiagnosticstool.exe -area Autopilot -cab 'C:\AutopilotDiag.cab'
-        Write-Output 'Autopilot diagnostics collected.'
     }
-
-    schtasks /run /tn "Microsoft\Windows\EnterpriseMgmt\Schedule created by enrollment client for automatically setting up the device"
-    Write-Output 'Enrollment task triggered.'
-
-    rundll32.exe shell32.dll,Control_RunDLL "sysdm.cpl,,4"
+    schtasks /run /tn 'Microsoft\\Windows\\EnterpriseMgmt\\Schedule created by enrollment client for automatically setting up the device'
 } catch {
-    Write-Output \"Error during autopilot script: $_\"
-} finally {
-    Stop-Transcript
-}"
+    'Error during autopilot script' | Out-File $LogPath -Append
+}
+"
 '@
 
 $SetupScripts = "C:\Windows\Setup\Scripts"
-New-Item -Path $SetupScripts -ItemType Directory -Force | Out-Null
-$FirstLogonScript | Out-File "$SetupScripts\SetupComplete.cmd" -Encoding ascii -Force
+New-Item -ItemType Directory -Path $SetupScripts -Force | Out-Null
+$SetupComplete | Out-File "$SetupScripts\SetupComplete.cmd" -Encoding ascii -Force
+Log "✔ SetupComplete.cmd written"
 
-#=================== Finalize ===================#
-try {
-    Stop-Transcript
-} catch {
-    Write-Warning "Failed to stop transcript: $_"
-}
-
-Write-Host "`nDeployment complete. Rebooting into full OS..." -ForegroundColor Green
+# ========== Final ==========
+Log "✅ Deployment completed. Rebooting..."
 Start-Sleep -Seconds 5
-# Restart-Computer -Force
+Restart-Computer -Force
