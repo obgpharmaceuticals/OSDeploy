@@ -114,4 +114,36 @@ Start-Transcript -Path $LogPath -Append
 
 try {
     if (Get-Command 'mdmdiagnosticstool.exe' -ErrorAction SilentlyContinue) {
-        $Ha
+        $HardwareHash = 'C:\HardwareHash.csv'
+        mdmdiagnosticstool.exe -CollectHardwareHash -Output $HardwareHash
+        Write-Output 'Hardware hash collected to $HardwareHash'
+
+        mdmdiagnosticstool.exe -area Autopilot -cab 'C:\AutopilotDiag.cab'
+        Write-Output 'Autopilot diagnostics collected.'
+    }
+
+    schtasks /run /tn "Microsoft\Windows\EnterpriseMgmt\Schedule created by enrollment client for automatically setting up the device"
+    Write-Output 'Enrollment task triggered.'
+
+    rundll32.exe shell32.dll,Control_RunDLL "sysdm.cpl,,4"
+} catch {
+    Write-Output \"Error during autopilot script: $_\"
+} finally {
+    Stop-Transcript
+}"
+'@
+
+$SetupScripts = "C:\Windows\Setup\Scripts"
+New-Item -Path $SetupScripts -ItemType Directory -Force | Out-Null
+$FirstLogonScript | Out-File "$SetupScripts\SetupComplete.cmd" -Encoding ascii -Force
+
+#=================== Finalize ===================#
+try {
+    Stop-Transcript
+} catch {
+    Write-Warning "Failed to stop transcript: $_"
+}
+
+Write-Host "`nDeployment complete. Rebooting into full OS..." -ForegroundColor Green
+Start-Sleep -Seconds 5
+# Restart-Computer -Force
