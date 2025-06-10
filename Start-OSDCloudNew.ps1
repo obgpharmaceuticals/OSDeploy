@@ -167,4 +167,4 @@ Log "✔ SetupComplete.cmd written"
 # ========== Final ==========
 Log "✅ Deployment completed. Rebooting..."
 Start-Sleep -Seconds 5
-Restart-Computer -Force
+# Restart-Computer -Force
