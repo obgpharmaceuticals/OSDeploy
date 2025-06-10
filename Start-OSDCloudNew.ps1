@@ -1,7 +1,10 @@
 # ========== Logging Setup ==========
 $LogFile = "X:\DeployScript.log"
-function Log { param($msg); "[$(Get-Date -Format 'u')] $msg" | Out-File $LogFile -Append }
-
+"[$(Get-Date -Format 'u')] Starting Deployment Script..." | Out-File $LogFile -Append
+function Log {
+    param([string]$Message)
+    "[$(Get-Date -Format 'u')] $Message" | Out-File $LogFile -Append
+}
 Log "=== Starting Windows 11 Deployment ==="
 
 # ========== Select Target Disk ==========
