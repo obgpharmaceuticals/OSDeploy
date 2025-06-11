@@ -2,7 +2,7 @@
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
-    Write-Host "Starting deployment..." -ForegroundColor Cyan
+    Write-Host "Starting deployment test..." -ForegroundColor Cyan
 
     # Prompt for system type
     Write-Host "Select system type:"
