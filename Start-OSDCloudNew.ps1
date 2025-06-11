@@ -122,7 +122,7 @@ try {
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File -FilePath $OOBEJsonPath -Encoding utf8
 
     # Create unattend.xml to pre-configure region and keyboard
-    $UnattendPath = "C:\Windows\Panther\Unattend\unattend.xml"
+    $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     New-Item -ItemType Directory -Force -Path (Split-Path $UnattendPath) | Out-Null
     @"
 <?xml version="1.0" encoding="utf-8"?>
@@ -138,23 +138,25 @@ try {
 </unattend>
 "@ | Out-File -Encoding utf8 -FilePath $UnattendPath
 
-    # Create SetupComplete.cmd to upload Autopilot hardware hash on first logon
+    # Create SetupComplete.cmd to install module and upload Autopilot hardware hash on first logon
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     Write-Host "Creating SetupComplete.cmd..."
     $SetupCompleteContent = @"
 @echo off
-powershell.exe -ExecutionPolicy Bypass -NoProfile -Command `
-    "Import-Module WindowsAutopilotIntune; `
-    \$ErrorActionPreference = 'Stop'; `
-    Get-WindowsAutopilotInfo -Online -OutputFile 'C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot\hardwarehash.csv'; `
-    Write-Host 'Uploading hardware hash to Intune...'; `
-    # You can insert here your custom upload logic or API call if needed `
-    "
+powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ^
+    "`$ProgressPreference = 'SilentlyContinue'; ^
+    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers; ^
+    Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted; ^
+    if (-not (Get-Module -ListAvailable -Name WindowsAutopilotIntune)) { ^
+        Install-Module -Name WindowsAutopilotIntune -Force -Scope AllUsers ^
+    }; ^
+    Import-Module WindowsAutopilotIntune; ^
+    Get-WindowsAutopilotInfo -Online -OutputFile 'C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot\hardwarehash.csv'; ^
+    Write-Host 'Autopilot hardware hash uploaded.'"
 exit
 "@
     New-Item -ItemType Directory -Path (Split-Path $SetupCompletePath) -Force | Out-Null
     $SetupCompleteContent | Out-File -FilePath $SetupCompletePath -Encoding ASCII
-
     Write-Host "SetupComplete.cmd created successfully."
 
     Write-Host "Deployment script completed successfully. Rebooting in 5 seconds..."
