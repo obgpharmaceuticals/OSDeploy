@@ -1,80 +1,142 @@
-Start-Transcript -Path X:\DeployLog.txt
+Write-Host "Starting Deployment Script..." -ForegroundColor Cyan
+Start-Transcript -Path "X:\DeployScript.log" -Append
 
-# Step 1: Prompt for System Type
-Write-Host "Select System Type:" -ForegroundColor Yellow
-Write-Host "1. Productivity Desktop"
-Write-Host "2. Productivity Laptop"
-Write-Host "3. Line of Business Desktop"
-$choice = Read-Host "Enter a number (1-3)"
+try {
+    # Select disk: Online, GPT or RAW, size > 30GB
+    $Disk = Get-Disk | Where-Object { $_.OperationalStatus -eq 'Online' -and ($_.PartitionStyle -eq 'RAW' -or $_.PartitionStyle -eq 'GPT') -and $_.Size -gt 30GB } | Sort-Object Size -Descending | Select-Object -First 1
+    if (-not $Disk) { throw "No suitable disk found." }
+    $DiskNumber = $Disk.Number
+    Write-Host "Selected disk $DiskNumber (Size: $([math]::Round($Disk.Size/1GB,2)) GB)"
 
-switch ($choice) {
-    '1' { $GroupTag = "ProductivityDesktop" }
-    '2' { $GroupTag = "ProductivityLaptop" }
-    '3' { $GroupTag = "LineOfBusinessDesktop" }
-    default { Write-Error "Invalid selection"; exit 1 }
-}
+    # Clean and initialize disk
+    Write-Host "Cleaning disk $DiskNumber..."
+    Clear-Disk -Number $DiskNumber -RemoveData -Confirm:$false
+    Initialize-Disk -Number $DiskNumber -PartitionStyle GPT
 
-# Step 2: Partition and Format Disk
-$disk = Get-Disk | Where-Object IsSystem -eq $false | Sort-Object Number | Select-Object -First 1
-$disk | Clear-Disk -RemoveData -Confirm:$false
-Initialize-Disk -Number $disk.Number -PartitionStyle GPT
-New-Partition -DiskNumber $disk.Number -Size 100MB -AssignDriveLetter | Format-Volume -FileSystem FAT32 -NewFileSystemLabel "System"
-New-Partition -DiskNumber $disk.Number -Size 16MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}"
-$osPartition = New-Partition -DiskNumber $disk.Number -UseMaximumSize -AssignDriveLetter
-$osPartition | Format-Volume -FileSystem NTFS -NewFileSystemLabel "Windows"
+    # Create EFI system partition (100 MB, FAT32)
+    Write-Host "Creating EFI partition..."
+    $EfiPartition = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}" -AssignDriveLetter
+    Start-Sleep -Seconds 2
+    $EfiVolume = Get-Volume -Partition $EfiPartition | Where-Object { $_.FileSystem -eq $null }
+    Format-Volume -Partition $EfiPartition -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
+    $null = Set-Partition -DiskNumber $DiskNumber -PartitionNumber $EfiPartition.PartitionNumber -NewDriveLetter "S"
 
-# Step 3: Apply Windows Image
-$WimURL = "http://10.1.192.20/install.wim"
-$WimPath = "X:\install.wim"
-curl.exe -o $WimPath $WimURL
-dism.exe /Apply-Image /ImageFile:$WimPath /Index:1 /ApplyDir:$($osPartition.DriveLetter):\
+    # Create MSR partition (128 MB)
+    Write-Host "Creating MSR partition..."
+    New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
 
-# Step 4: Setup Boot
-bcdboot "$($osPartition.DriveLetter):\Windows" /s S: /f UEFI
+    # Create data partition (10 GB)
+    Write-Host "Creating data partition..."
+    $DataPartition = New-Partition -DiskNumber $DiskNumber -Size 10GB -AssignDriveLetter
+    Format-Volume -Partition $DataPartition -FileSystem NTFS -NewFileSystemLabel "Data" -Confirm:$false
+    $null = Set-Partition -DiskNumber $DiskNumber -PartitionNumber $DataPartition.PartitionNumber -NewDriveLetter "D"
 
-# Step 5: Autopilot Config Files
-$AutopilotJsonPath = "$($osPartition.DriveLetter):\Windows\Provisioning\Autopilot"
-New-Item -Path $AutopilotJsonPath -ItemType Directory -Force
+    # Create Windows partition (remaining space)
+    Write-Host "Creating Windows partition..."
+    $WindowsPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize -AssignDriveLetter
+    Format-Volume -Partition $WindowsPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
+    $null = Set-Partition -DiskNumber $DiskNumber -PartitionNumber $WindowsPartition.PartitionNumber -NewDriveLetter "C"
 
-@"
+    Write-Host "Partitions created: EFI (S:), Data (D:), Windows (C:)"
+
+    # Download WIM file
+    $WimUrl = "http://10.1.192.20/install.wim"
+    $LocalWim = "D:\install.wim"
+    Write-Host "Downloading WIM from $WimUrl to $LocalWim..."
+    Invoke-WebRequest -Uri $WimUrl -OutFile $LocalWim -UseBasicParsing
+
+    # Apply WIM
+    Write-Host "Applying Windows image to C: drive..."
+    dism.exe /Apply-Image /ImageFile:$LocalWim /Index:1 /ApplyDir:C:\
+
+    # Setup boot files
+    Write-Host "Setting up boot configuration..."
+    bcdboot C:\Windows /s S: /f UEFI
+
+    # Prompt for device type
+    $GroupTag = "NotSet"
+    do {
+        Write-Host "Select System Type:" -ForegroundColor Yellow
+        Write-Host "1: Productivity Desktop"
+        Write-Host "2: Productivity Laptop"
+        Write-Host "3: Line of Business"
+        $choice = Read-Host "Enter choice"
+        switch ($choice) {
+            '1' { $GroupTag = "ProductivityDesktop" }
+            '2' { $GroupTag = "ProductivityLaptop" }
+            '3' { $GroupTag = "LineOfBusinessDesktop" }
+            default { Write-Host "Invalid choice, please try again." }
+        }
+    } until ($GroupTag -ne "NotSet")
+
+    # OOBE.json
+    $OOBEJson = @"
 {
-    "CloudAssignedTenantId": "YOUR-TENANT-GUID",
-    "CloudAssignedDeviceName": "%SERIAL%",
-    "CloudAssignedDomainJoinMethod": "AzureAD",
-    "CloudAssignedAadServerData": "",
-    "CloudAssignedProfile": "",
-    "ZtdGroupTag": "$GroupTag",
-    "CloudAssignedOobeConfig": 131
+    "Updates": [],
+    "RemoveAppx": [
+        "MicrosoftTeams", "Microsoft.GamingApp", "Microsoft.GetHelp",
+        "Microsoft.MicrosoftOfficeHub", "Microsoft.MicrosoftSolitaireCollection",
+        "Microsoft.People", "Microsoft.PowerAutomateDesktop",
+        "Microsoft.WindowsFeedbackHub", "Microsoft.XboxGamingOverlay",
+        "Microsoft.XboxIdentityProvider", "Microsoft.YourPhone"
+    ],
+    "UpdateDrivers": true,
+    "UpdateWindows": true,
+    "AutopilotOOBE": true,
+    "GroupTagID": "$GroupTag"
 }
-"@ | Out-File -Encoding UTF8 -FilePath "$AutopilotJsonPath\AutopilotConfigurationFile.json"
+"@
+    $OOBEPath = "C:\ProgramData\OSDeploy"
+    New-Item -Path $OOBEPath -ItemType Directory -Force | Out-Null
+    $OOBEJson | Out-File "$OOBEPath\OOBE.json" -Encoding ascii -Force
 
-@"
-{
-    "version": "1.0",
-    "modernDeploymentWithAutopilot": true,
-    "oobe": {
-        "hideEULA": true,
-        "userType": "Standard",
-        "language": "en-US",
-        "privacySettings": "Full"
-    },
-    "update": {
-        "installDrivers": true,
-        "installUpdates": true
-    },
-    "removeAppx": true
-}
-"@ | Out-File -Encoding UTF8 -FilePath "$AutopilotJsonPath\OOBE.json"
+    # AutopilotConfigurationFile.json
+    $AutoPilotJson = @{
+        CloudAssignedOobeConfig       = 131
+        CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedDomainJoinMethod = 0
+        ZtdCorrelationId              = (New-Guid).Guid
+        CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
+        CloudAssignedUserUpn          = ""
+        CloudAssignedGroupTag         = $GroupTag
+    } | ConvertTo-Json -Depth 10
+    $AutoPilotPath = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
+    New-Item -Path $AutoPilotPath -ItemType Directory -Force | Out-Null
+    $AutoPilotJson | Out-File "$AutoPilotPath\AutopilotConfigurationFile.json" -Encoding ascii -Force
 
-# Step 6: SetupComplete to upload hardware hash
-$SetupScript = @'
-powershell -ExecutionPolicy Bypass -Command "Install-Script -Name Get-WindowsAutopilotInfo -Force -Scope LocalMachine; Get-WindowsAutopilotInfo -Online -GroupTag '$GroupTag'"
-exit 0
+    # SetupComplete.cmd
+    $FirstLogonScript = @'
+@echo off
+PowerShell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -Command "
+$LogPath = 'C:\Windows\Temp\AutopilotRegister.log'
+Start-Transcript -Path $LogPath -Append
+try {
+    if (Get-Command 'mdmdiagnosticstool.exe' -ErrorAction SilentlyContinue) {
+        $HardwareHash = 'C:\HardwareHash.csv'
+        mdmdiagnosticstool.exe -CollectHardwareHash -Output $HardwareHash
+        Write-Output 'Hardware hash collected to $HardwareHash'
+        mdmdiagnosticstool.exe -area Autopilot -cab 'C:\AutopilotDiag.cab'
+        Write-Output 'Autopilot diagnostics collected.'
+    }
+    schtasks /run /tn "Microsoft\Windows\EnterpriseMgmt\Schedule created by enrollment client for automatically setting up the device"
+    Write-Output 'Enrollment task triggered.'
+} catch {
+    Write-Output "Error during autopilot script: $_"
+} finally {
+    Stop-Transcript
+}"
 '@
-$SetupPath = "$($osPartition.DriveLetter):\Windows\Setup\Scripts"
-New-Item -ItemType Directory -Path $SetupPath -Force
-Set-Content -Path "$SetupPath\SetupComplete.cmd" -Value $SetupScript
+    $SetupScripts = "C:\Windows\Setup\Scripts"
+    New-Item -Path $SetupScripts -ItemType Directory -Force | Out-Null
+    $FirstLogonScript | Out-File "$SetupScripts\SetupComplete.cmd" -Encoding ascii -Force
 
-# Step 7: Reboot
-Stop-Transcript
-wpeutil reboot
+    Write-Host "`nDeployment complete. The system will reboot in 10 seconds..." -ForegroundColor Green
+    Start-Sleep -Seconds 10
+    # Restart-Computer -Force
+}
+catch {
+    Write-Error "Deployment failed: $_"
+}
+finally {
+    try { Stop-Transcript } catch {}
+}
