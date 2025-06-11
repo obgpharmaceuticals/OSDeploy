@@ -66,14 +66,15 @@ try {
     Write-Host "Partitions created with drive letters: EFI (S:), Data (D:), Windows (C:)"
 
     # Download Windows install.wim to Data partition
-    $WimUrl = "http://10.1.192.20/install.wim"
-    $LocalWim = "D:\install.wim"
-    Write-Host "Downloading WIM from $WimUrl to $LocalWim..."
-    Invoke-WebRequest -Uri $WimUrl -OutFile $LocalWim -UseBasicParsing
+    #    $WimUrl = "http://10.1.192.20/install.wim"
+    #    $LocalWim = "D:\install.wim"
+    #    Write-Host "Downloading WIM from $WimUrl to $LocalWim..."
+    #    Invoke-WebRequest -Uri $WimUrl -OutFile $LocalWim -UseBasicParsing
 
     # Apply WIM image to C:
     Write-Host "Applying Windows image to C: drive..."
-    dism.exe /Apply-Image /ImageFile:$LocalWim /Index:1 /ApplyDir:C:\
+    # dism.exe /Apply-Image /ImageFile:$LocalWim /Index:1 /ApplyDir:C:\
+    dism.exe /Apply-Image /ImageFile:E:\install.wim /Index:1 /ApplyDir:C:\
 
     # Setup boot files in EFI partition
     Write-Host "Setting up boot configuration..."
