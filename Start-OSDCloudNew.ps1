@@ -1,63 +1,106 @@
-# Select system type
+Start-Transcript -Path X:\DeployLog.txt -Append
+
+# Prompt for System Type
 Write-Host "Select System Type:" -ForegroundColor Yellow
 Write-Host "1. Productivity Desktop"
 Write-Host "2. Productivity Laptop"
 Write-Host "3. Line of Business Desktop"
-$choice = Read-Host "Enter choice [1,2,3]"
+$selection = Read-Host "Enter selection (1, 2, or 3)"
 
-switch ($choice) {
+switch ($selection) {
     '1' { $GroupTag = "ProductivityDesktop" }
     '2' { $GroupTag = "ProductivityLaptop" }
     '3' { $GroupTag = "LineOfBusinessDesktop" }
-    default { Write-Error "Invalid choice"; exit }
+    default {
+        Write-Host "Invalid selection. Defaulting to ProductivityDesktop." -ForegroundColor Red
+        $GroupTag = "ProductivityDesktop"
+    }
 }
 
-Write-Host "Wiping and reinitializing system disk..."
-
-# Assume disk 0 is target disk, modify if needed
+# Disk 0 - Wipe and Partition (UEFI GPT)
 $disk = Get-Disk -Number 0
+$disk | Clear-Disk -RemoveData -Confirm:$false
+Initialize-Disk -Number 0 -PartitionStyle GPT
 
-# Clean disk completely
-Clear-Disk -Number $disk.Number -RemoveData -Confirm:$false
+# Create partitions
+$efi = New-Partition -DiskNumber 0 -Size 100MB -GptType "{EBD0A0A2-B9E5-4433-87C0-68B6B72699C7}" -AssignDriveLetter
+Format-Volume -Partition $efi -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
+Set-Partition -DiskNumber 0 -PartitionNumber $efi.PartitionNumber -NewDriveLetter S
 
-# Initialize as GPT
-Initialize-Disk -Number $disk.Number -PartitionStyle GPT
+New-Partition -DiskNumber 0 -Size 16MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null  # MSR
 
-# Create partitions:
-# EFI System Partition (100 MB)
-$efi = New-Partition -DiskNumber $disk.Number -Size 100MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}"
-Format-Volume -Partition $efi -FileSystem FAT32 -NewFileSystemLabel "SYSTEM" -Confirm:$false
+$os = New-Partition -DiskNumber 0 -UseMaximumSize -AssignDriveLetter
+Format-Volume -Partition $os -FileSystem NTFS -NewFileSystemLabel "OS" -Confirm:$false
+Set-Partition -DiskNumber 0 -PartitionNumber $os.PartitionNumber -NewDriveLetter C
 
-# MSR Partition (16 MB)
-New-Partition -DiskNumber $disk.Number -Size 16MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
+# Apply Windows from Network WIM
+$WIMPath = "http://10.1.192.20/install.wim"
+Dism /Apply-Image /ImageFile:$WIMPath /Index:1 /ApplyDir:C:\
 
-# OS partition (rest of disk)
-$osPartition = New-Partition -DiskNumber $disk.Number -UseMaximumSize
-Format-Volume -Partition $osPartition -FileSystem NTFS -NewFileSystemLabel "OS" -Confirm:$false
+# Setup Bootloader
+bcdboot C:\Windows /s S: /f UEFI
 
-# Assign drive letter C:
-$osPartition | Set-Partition -NewDriveLetter C
+# Autopilot Configuration
+$AutoPilotPath = "C:\Windows\Provisioning\Autopilot"
+New-Item -Path $AutoPilotPath -ItemType Directory -Force | Out-Null
 
-# Apply Windows image directly from network path
-$WIMPath = "\\10.1.192.20\install.wim"  # Use UNC path or http if supported
-$ImageIndex = 1  # Select appropriate image index from WIM
-
-Write-Host "Applying Windows image to C:..."
-
-dism /Apply-Image /ImageFile:$WIMPath /Index:$ImageIndex /ApplyDir:C:\
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Error "Failed to apply Windows image"
-    exit 1
+@"
+{
+    "CloudAssignedTenantId": "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee",
+    "CloudAssignedTenantDomain": "obgpharma.onmicrosoft.com",
+    "CloudAssignedGroupTag": "$GroupTag"
 }
+"@ | Set-Content -Path "$AutoPilotPath\AutopilotConfigurationFile.json" -Encoding utf8
 
-# Configure boot files
-bcdboot C:\Windows /s $efi.DriveLetter: /f UEFI
+# OOBE.json Customization
+@"
+{
+    "Version": 1,
+    "OOBE": {
+        "HideEULA": true,
+        "HidePrivacySettings": true,
+        "HideLocalAccount": true,
+        "HideOEMRegistration": true,
+        "HideRegion": true,
+        "HideLanguage": true,
+        "HideKeyboard": true,
+        "ProtectYourPC": "1"
+    },
+    "RemoveAppx": [
+        "MicrosoftTeams",
+        "Microsoft.GamingApp",
+        "Microsoft.GetHelp",
+        "Microsoft.MicrosoftOfficeHub",
+        "Microsoft.MicrosoftSolitaireCollection",
+        "Microsoft.People",
+        "Microsoft.PowerAutomateDesktop",
+        "Microsoft.WindowsFeedbackHub",
+        "Microsoft.XboxGamingOverlay",
+        "Microsoft.XboxIdentityProvider",
+        "Microsoft.YourPhone"
+    ],
+    "UpdateDrivers": true,
+    "UpdateWindows": true
+}
+"@ | Set-Content -Path "C:\Windows\OOBE.json" -Encoding utf8
 
-Write-Host "Image applied successfully. Continuing setup..."
+# SetupComplete Script for Autopilot Upload
+$SetupScriptPath = "C:\Windows\Setup\Scripts"
+New-Item -Path $SetupScriptPath -ItemType Directory -Force | Out-Null
 
-# Setup Autopilot folder, OOBE configs, app removals, etc.
-# ... your logic here to create provisioning files with $GroupTag, tenant IDs ...
+@"
+powershell -ExecutionPolicy Bypass -NoLogo -NoProfile -WindowStyle Hidden -Command "& {
+    Start-Transcript -Path C:\OOBE-PostSetup.log -Append
+    try {
+        Install-Script -Name Get-WindowsAutopilotInfo -Force -Scope LocalMachine -ErrorAction Stop
+        Get-WindowsAutopilotInfo -Online
+    } catch {
+        Write-Error "Autopilot upload failed: $_"
+    }
+    Stop-Transcript
+}"
+"@ | Set-Content -Path "$SetupScriptPath\SetupComplete.cmd" -Encoding ascii
 
-# Reboot to continue OOBE
-# Restart-Computer -Force
+# Reboot into full OS
+Write-Host "Installation complete. Rebooting..." -ForegroundColor Green
+Restart-Computer -Force
