@@ -2,7 +2,7 @@
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
-    Write-Host "Starting deployment test 2..." -ForegroundColor Cyan
+    Write-Host "Starting deployment test..." -ForegroundColor Cyan
 
     # Prompt for system type
     Write-Host "Select system type:"
@@ -47,7 +47,7 @@ try {
     Write-Host "Creating Windows partition (remaining space)..."
     $WindowsPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
 
-    # Format and assign drive letters
+    # Format and assign drive letters, waiting to ensure system updates volume info
     Write-Host "Formatting EFI partition and assigning drive letter S:"
     Format-Volume -Partition $EfiPartition -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
     Start-Sleep -Seconds 3
@@ -65,41 +65,48 @@ try {
 
     Write-Host "Partitions created with drive letters: EFI (S:), Data (D:), Windows (C:)"
 
-    # Apply WIM image to C: drive
+    # Download Windows install.wim to Data partition
+    #    $WimUrl = "http://10.1.192.20/install.wim"
+    #    $LocalWim = "D:\install.wim"
+    #    Write-Host "Downloading WIM from $WimUrl to $LocalWim..."
+    #    Invoke-WebRequest -Uri $WimUrl -OutFile $LocalWim -UseBasicParsing
+
+    # Apply WIM image to C:
     Write-Host "Applying Windows image to C: drive..."
+    # dism.exe /Apply-Image /ImageFile:$LocalWim /Index:1 /ApplyDir:C:\
     dism.exe /Apply-Image /ImageFile:E:\install.wim /Index:1 /ApplyDir:C:\
 
     # Setup boot files in EFI partition
     Write-Host "Setting up boot configuration..."
     bcdboot C:\Windows /s S: /f UEFI
 
-    # Ensure Autopilot provisioning folder exists
+    # Create provisioning\autopilot folder if missing
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     if (-not (Test-Path $AutopilotFolder)) {
-        New-Item -ItemType Directory -Path $AutopilotFolder -Force | Out-Null
+        New-Item -Path $AutopilotFolder -ItemType Directory -Force | Out-Null
     }
 
-    # Create AutopilotConfigurationFile.json
+    # Create AutopilotConfigurationFile.json in Windows partition
     $AutopilotConfig = @{
-        CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantId = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        GroupTag                 = $GroupTag
+        GroupTag = $GroupTag
     }
     $AutopilotConfigPath = "$AutopilotFolder\AutopilotConfigurationFile.json"
     Write-Host "Creating AutopilotConfigurationFile.json..."
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File -FilePath $AutopilotConfigPath -Encoding utf8
 
-    # Create OOBE.json
+    # Create OOBE.json for app removals and Autopilot settings
     $OOBEJson = @{
-        "CloudAssignedTenantId"         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
-        "CloudAssignedTenantDomain"     = "obgpharma.onmicrosoft.com"
-        "DeviceType"                    = $GroupTag
-        "EnableUserStatusTracking"      = $true
-        "EnableUserConfirmation"        = $true
+        "CloudAssignedTenantId" = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        "CloudAssignedTenantDomain" = "obgpharma.onmicrosoft.com"
+        "DeviceType" = $GroupTag
+        "EnableUserStatusTracking" = $true
+        "EnableUserConfirmation" = $true
         "EnableProvisioningDiagnostics" = $true
-        "DeviceLicensingType"           = "WindowsEnterprise"
-        "Language"                      = "en-GB"
-        "RemovePreInstalledApps"        = @(
+        "DeviceLicensingType" = "WindowsEnterprise"
+        "Language" = "en-GB"
+        "RemovePreInstalledApps" = @(
             "Microsoft.ZuneMusic",
             "Microsoft.XboxApp",
             "Microsoft.XboxGameOverlay",
@@ -114,14 +121,25 @@ try {
     Write-Host "Creating OOBE.json..."
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File -FilePath $OOBEJsonPath -Encoding utf8
 
-    # Ensure Setup\Scripts folder exists
-    $ScriptsPath = "C:\Windows\Setup\Scripts"
-    if (-not (Test-Path $ScriptsPath)) {
-        New-Item -ItemType Directory -Path $ScriptsPath -Force | Out-Null
-    }
+    # Create unattend.xml to pre-configure region and keyboard
+    $UnattendPath = "C:\Windows\Panther\Unattend\unattend.xml"
+    New-Item -ItemType Directory -Force -Path (Split-Path $UnattendPath) | Out-Null
+    @"
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <InputLocale>en-GB</InputLocale>
+      <SystemLocale>en-GB</SystemLocale>
+      <UILanguage>en-GB</UILanguage>
+      <UserLocale>en-GB</UserLocale>
+    </component>
+  </settings>
+</unattend>
+"@ | Out-File -Encoding utf8 -FilePath $UnattendPath
 
-    # Create SetupComplete.cmd
-    $SetupCompletePath = "$ScriptsPath\SetupComplete.cmd"
+    # Create SetupComplete.cmd to upload Autopilot hardware hash on first logon
+    $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     Write-Host "Creating SetupComplete.cmd..."
     $SetupCompleteContent = @"
 @echo off
@@ -134,7 +152,9 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile -Command `
     "
 exit
 "@
+    New-Item -ItemType Directory -Path (Split-Path $SetupCompletePath) -Force | Out-Null
     $SetupCompleteContent | Out-File -FilePath $SetupCompletePath -Encoding ASCII
+
     Write-Host "SetupComplete.cmd created successfully."
 
     Write-Host "Deployment script completed successfully. Rebooting in 5 seconds..."
