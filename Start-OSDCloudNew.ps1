@@ -1,106 +1,80 @@
-Start-Transcript -Path X:\DeployLog.txt -Append
+Start-Transcript -Path X:\DeployLog.txt
 
-# Prompt for System Type
+# Step 1: Prompt for System Type
 Write-Host "Select System Type:" -ForegroundColor Yellow
 Write-Host "1. Productivity Desktop"
 Write-Host "2. Productivity Laptop"
 Write-Host "3. Line of Business Desktop"
-$selection = Read-Host "Enter selection (1, 2, or 3)"
+$choice = Read-Host "Enter a number (1-3)"
 
-switch ($selection) {
+switch ($choice) {
     '1' { $GroupTag = "ProductivityDesktop" }
     '2' { $GroupTag = "ProductivityLaptop" }
     '3' { $GroupTag = "LineOfBusinessDesktop" }
-    default {
-        Write-Host "Invalid selection. Defaulting to ProductivityDesktop." -ForegroundColor Red
-        $GroupTag = "ProductivityDesktop"
-    }
+    default { Write-Error "Invalid selection"; exit 1 }
 }
 
-# Disk 0 - Wipe and Partition (UEFI GPT)
-$disk = Get-Disk -Number 0
+# Step 2: Partition and Format Disk
+$disk = Get-Disk | Where-Object IsSystem -eq $false | Sort-Object Number | Select-Object -First 1
 $disk | Clear-Disk -RemoveData -Confirm:$false
-Initialize-Disk -Number 0 -PartitionStyle GPT
+Initialize-Disk -Number $disk.Number -PartitionStyle GPT
+New-Partition -DiskNumber $disk.Number -Size 100MB -AssignDriveLetter | Format-Volume -FileSystem FAT32 -NewFileSystemLabel "System"
+New-Partition -DiskNumber $disk.Number -Size 16MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}"
+$osPartition = New-Partition -DiskNumber $disk.Number -UseMaximumSize -AssignDriveLetter
+$osPartition | Format-Volume -FileSystem NTFS -NewFileSystemLabel "Windows"
 
-# Create partitions
-$efi = New-Partition -DiskNumber 0 -Size 100MB -GptType "{EBD0A0A2-B9E5-4433-87C0-68B6B72699C7}" -AssignDriveLetter
-Format-Volume -Partition $efi -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
-Set-Partition -DiskNumber 0 -PartitionNumber $efi.PartitionNumber -NewDriveLetter S
+# Step 3: Apply Windows Image
+$WimURL = "http://10.1.192.20/install.wim"
+$WimPath = "X:\install.wim"
+curl.exe -o $WimPath $WimURL
+dism.exe /Apply-Image /ImageFile:$WimPath /Index:1 /ApplyDir:$($osPartition.DriveLetter):\
 
-New-Partition -DiskNumber 0 -Size 16MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null  # MSR
+# Step 4: Setup Boot
+bcdboot "$($osPartition.DriveLetter):\Windows" /s S: /f UEFI
 
-$os = New-Partition -DiskNumber 0 -UseMaximumSize -AssignDriveLetter
-Format-Volume -Partition $os -FileSystem NTFS -NewFileSystemLabel "OS" -Confirm:$false
-Set-Partition -DiskNumber 0 -PartitionNumber $os.PartitionNumber -NewDriveLetter C
-
-# Apply Windows from Network WIM
-$WIMPath = "http://10.1.192.20/install.wim"
-Dism /Apply-Image /ImageFile:$WIMPath /Index:1 /ApplyDir:C:\
-
-# Setup Bootloader
-bcdboot C:\Windows /s S: /f UEFI
-
-# Autopilot Configuration
-$AutoPilotPath = "C:\Windows\Provisioning\Autopilot"
-New-Item -Path $AutoPilotPath -ItemType Directory -Force | Out-Null
+# Step 5: Autopilot Config Files
+$AutopilotJsonPath = "$($osPartition.DriveLetter):\Windows\Provisioning\Autopilot"
+New-Item -Path $AutopilotJsonPath -ItemType Directory -Force
 
 @"
 {
-    "CloudAssignedTenantId": "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee",
-    "CloudAssignedTenantDomain": "obgpharma.onmicrosoft.com",
-    "CloudAssignedGroupTag": "$GroupTag"
+    "CloudAssignedTenantId": "YOUR-TENANT-GUID",
+    "CloudAssignedDeviceName": "%SERIAL%",
+    "CloudAssignedDomainJoinMethod": "AzureAD",
+    "CloudAssignedAadServerData": "",
+    "CloudAssignedProfile": "",
+    "ZtdGroupTag": "$GroupTag",
+    "CloudAssignedOobeConfig": 131
 }
-"@ | Set-Content -Path "$AutoPilotPath\AutopilotConfigurationFile.json" -Encoding utf8
+"@ | Out-File -Encoding UTF8 -FilePath "$AutopilotJsonPath\AutopilotConfigurationFile.json"
 
-# OOBE.json Customization
 @"
 {
-    "Version": 1,
-    "OOBE": {
-        "HideEULA": true,
-        "HidePrivacySettings": true,
-        "HideLocalAccount": true,
-        "HideOEMRegistration": true,
-        "HideRegion": true,
-        "HideLanguage": true,
-        "HideKeyboard": true,
-        "ProtectYourPC": "1"
+    "version": "1.0",
+    "modernDeploymentWithAutopilot": true,
+    "oobe": {
+        "hideEULA": true,
+        "userType": "Standard",
+        "language": "en-US",
+        "privacySettings": "Full"
     },
-    "RemoveAppx": [
-        "MicrosoftTeams",
-        "Microsoft.GamingApp",
-        "Microsoft.GetHelp",
-        "Microsoft.MicrosoftOfficeHub",
-        "Microsoft.MicrosoftSolitaireCollection",
-        "Microsoft.People",
-        "Microsoft.PowerAutomateDesktop",
-        "Microsoft.WindowsFeedbackHub",
-        "Microsoft.XboxGamingOverlay",
-        "Microsoft.XboxIdentityProvider",
-        "Microsoft.YourPhone"
-    ],
-    "UpdateDrivers": true,
-    "UpdateWindows": true
+    "update": {
+        "installDrivers": true,
+        "installUpdates": true
+    },
+    "removeAppx": true
 }
-"@ | Set-Content -Path "C:\Windows\OOBE.json" -Encoding utf8
+"@ | Out-File -Encoding UTF8 -FilePath "$AutopilotJsonPath\OOBE.json"
 
-# SetupComplete Script for Autopilot Upload
-$SetupScriptPath = "C:\Windows\Setup\Scripts"
-New-Item -Path $SetupScriptPath -ItemType Directory -Force | Out-Null
+# Step 6: SetupComplete to upload hardware hash
+$SetupScript = @'
+powershell -ExecutionPolicy Bypass -Command "Install-Script -Name Get-WindowsAutopilotInfo -Force -Scope LocalMachine; Get-WindowsAutopilotInfo -Online -GroupTag '$GroupTag'"
+exit 0
+'@
+$SetupPath = "$($osPartition.DriveLetter):\Windows\Setup\Scripts"
+New-Item -ItemType Directory -Path $SetupPath -Force
+Set-Content -Path "$SetupPath\SetupComplete.cmd" -Value $SetupScript
 
-@"
-powershell -ExecutionPolicy Bypass -NoLogo -NoProfile -WindowStyle Hidden -Command "& {
-    Start-Transcript -Path C:\OOBE-PostSetup.log -Append
-    try {
-        Install-Script -Name Get-WindowsAutopilotInfo -Force -Scope LocalMachine -ErrorAction Stop
-        Get-WindowsAutopilotInfo -Online
-    } catch {
-        Write-Error "Autopilot upload failed: $_"
-    }
-    Stop-Transcript
-}"
-"@ | Set-Content -Path "$SetupScriptPath\SetupComplete.cmd" -Encoding ascii
-
-# Reboot into full OS
-Write-Host "Installation complete. Rebooting..." -ForegroundColor Green
-Restart-Computer -Force
+# Step 7: Reboot
+Stop-Transcript
+wpeutil reboot
