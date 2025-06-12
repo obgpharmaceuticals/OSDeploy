@@ -47,7 +47,7 @@ try {
     Write-Host "Creating Windows partition (remaining space)..."
     $WindowsPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
 
-    # Format and assign drive letters, waiting to ensure system updates volume info
+    # Format and assign drive letters
     Write-Host "Formatting EFI partition and assigning drive letter S:"
     Format-Volume -Partition $EfiPartition -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
     Start-Sleep -Seconds 3
@@ -138,11 +138,27 @@ try {
 </unattend>
 "@ | Out-File -Encoding utf8 -FilePath $UnattendPath
 
-    # Create SetupComplete.cmd to install module and upload Autopilot hardware hash on first logon
+    # Create SetupComplete.cmd to install module, upload Autopilot hardware hash, and log diagnostics
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     Write-Host "Creating SetupComplete.cmd..."
     $SetupCompleteContent = @"
 @echo off
+echo ==== AUTOPILOT SETUP ==== >> C:\Autopilot-Diag.txt
+echo Timestamp: %DATE% %TIME% >> C:\Autopilot-Diag.txt
+echo Checking JSON files... >> C:\Autopilot-Diag.txt
+
+if exist "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot\AutopilotConfigurationFile.json" (
+    echo Found AutopilotConfigurationFile.json >> C:\Autopilot-Diag.txt
+) else (
+    echo MISSING: AutopilotConfigurationFile.json >> C:\Autopilot-Diag.txt
+)
+
+if exist "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot\OOBE.json" (
+    echo Found OOBE.json >> C:\Autopilot-Diag.txt
+) else (
+    echo MISSING: OOBE.json >> C:\Autopilot-Diag.txt
+)
+
 powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ^
     "`$ProgressPreference = 'SilentlyContinue'; ^
     Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers; ^
@@ -152,7 +168,10 @@ powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ^
     }; ^
     Import-Module WindowsAutopilotIntune; ^
     Get-WindowsAutopilotInfo -Online -OutputFile 'C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot\hardwarehash.csv'; ^
+    Get-WindowsAutopilotInfo -OutputFile 'C:\Autopilot-LocalHash.csv'; ^
     Write-Host 'Autopilot hardware hash uploaded.'"
+
+echo Autopilot hash upload completed >> C:\Autopilot-Diag.txt
 exit
 "@
     New-Item -ItemType Directory -Path (Split-Path $SetupCompletePath) -Force | Out-Null
