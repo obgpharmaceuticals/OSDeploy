@@ -65,15 +65,8 @@ try {
 
     Write-Host "Partitions created with drive letters: EFI (S:), Data (D:), Windows (C:)"
 
-    # Download Windows install.wim to Data partition
-    #    $WimUrl = "http://10.1.192.20/install.wim"
-    #    $LocalWim = "D:\install.wim"
-    #    Write-Host "Downloading WIM from $WimUrl to $LocalWim..."
-    #    Invoke-WebRequest -Uri $WimUrl -OutFile $LocalWim -UseBasicParsing
-
     # Apply WIM image to C:
     Write-Host "Applying Windows image to C: drive..."
-    # dism.exe /Apply-Image /ImageFile:$LocalWim /Index:1 /ApplyDir:C:\
     dism.exe /Apply-Image /ImageFile:E:\install.wim /Index:1 /ApplyDir:C:\
 
     # Setup boot files in EFI partition
@@ -138,10 +131,11 @@ try {
 </unattend>
 "@ | Out-File -Encoding utf8 -FilePath $UnattendPath
 
-    # Create SetupComplete.cmd to install module, upload Autopilot hardware hash, and log diagnostics
+    # Create SetupComplete.cmd to install script and register autopilot
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     Write-Host "Creating SetupComplete.cmd..."
-    $SetupCompleteContent = @"
+
+$SetupCompleteContent = @"
 @echo off
 echo ==== AUTOPILOT SETUP ==== >> C:\Autopilot-Diag.txt
 echo Timestamp: %DATE% %TIME% >> C:\Autopilot-Diag.txt
@@ -159,11 +153,30 @@ if exist "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot\OOBE.json" (
     echo MISSING: OOBE.json >> C:\Autopilot-Diag.txt
 )
 
-powershell.exe -ExecutionPolicy Bypass -NoProfile -Command "$ProgressPreference='SilentlyContinue'; Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers; Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted; if (-not (Get-Module -ListAvailable -Name WindowsAutopilotIntune)) { Install-Module -Name WindowsAutopilotIntune -Force -Scope AllUsers }; Import-Module WindowsAutopilotIntune; Get-WindowsAutopilotInfo -Online -OutputFile 'C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot\hardwarehash.csv'; Get-WindowsAutopilotInfo -OutputFile 'C:\Autopilot-LocalHash.csv'; Write-Host 'Autopilot hardware hash uploaded.'"
-
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+"\$AutopilotOOBE = \$true; ^
+\$GroupTagID = '$GroupTag'; ^
+if (\$AutopilotOOBE) { ^
+    Write-Host -ForegroundColor Green 'AutoPilot Enabled'; ^
+    Write-Host 'Running Autopilot Registration' -ForegroundColor Cyan; ^
+    Write-Host 'Downloading and installing get-windowsautopilotinfo script'; ^
+    Install-Script -Name Get-WindowsAutoPilotInfo -Force -Verbose; ^
+    Write-Host 'Add Computer to Autopilot'; ^
+    Write-Host \"GroupTagID: \$GroupTagID\"; ^
+    Try { ^
+        Get-WindowsAutoPilotInfo.ps1 -GroupTag \$GroupTagID -Online -Assign; ^
+        Write-Host 'Successfully ran autopilot script' ^
+    } Catch { ^
+        Write-Host 'Error: Something went wrong. Unable to run autopilot script'; ^
+        Break ^
+    } ^
+} else { ^
+    Write-Host 'Autopilot OOBE is disabled, skipping registration.' ^
+}"
 echo Autopilot hash upload completed >> C:\Autopilot-Diag.txt
 exit
 "@
+
     New-Item -ItemType Directory -Path (Split-Path $SetupCompletePath) -Force | Out-Null
     $SetupCompleteContent | Out-File -FilePath $SetupCompletePath -Encoding ASCII
     Write-Host "SetupComplete.cmd created successfully."
