@@ -159,17 +159,7 @@ if exist "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot\OOBE.json" (
     echo MISSING: OOBE.json >> C:\Autopilot-Diag.txt
 )
 
-powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ^
-    "`$ProgressPreference = 'SilentlyContinue'; ^
-    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers; ^
-    Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted; ^
-    if (-not (Get-Module -ListAvailable -Name WindowsAutopilotIntune)) { ^
-        Install-Module -Name WindowsAutopilotIntune -Force -Scope AllUsers ^
-    }; ^
-    Import-Module WindowsAutopilotIntune; ^
-    Get-WindowsAutopilotInfo -Online -OutputFile 'C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot\hardwarehash.csv'; ^
-    Get-WindowsAutopilotInfo -OutputFile 'C:\Autopilot-LocalHash.csv'; ^
-    Write-Host 'Autopilot hardware hash uploaded.'"
+powershell.exe -ExecutionPolicy Bypass -NoProfile -Command "$ProgressPreference='SilentlyContinue'; Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope AllUsers; Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted; if (-not (Get-Module -ListAvailable -Name WindowsAutopilotIntune)) { Install-Module -Name WindowsAutopilotIntune -Force -Scope AllUsers }; Import-Module WindowsAutopilotIntune; Get-WindowsAutopilotInfo -Online -OutputFile 'C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot\hardwarehash.csv'; Get-WindowsAutopilotInfo -OutputFile 'C:\Autopilot-LocalHash.csv'; Write-Host 'Autopilot hardware hash uploaded.'"
 
 echo Autopilot hash upload completed >> C:\Autopilot-Diag.txt
 exit
