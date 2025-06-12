@@ -1,4 +1,4 @@
-# Start transcript
+# Start transcript logging
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
@@ -65,7 +65,7 @@ try {
 
     Write-Host "Partitions created with drive letters: EFI (S:), Data (D:), Windows (C:)"
 
-    # Apply WIM image to C:
+    # Apply WIM image to C: (adjust path as needed)
     Write-Host "Applying Windows image to C: drive..."
     dism.exe /Apply-Image /ImageFile:E:\install.wim /Index:1 /ApplyDir:C:\
 
@@ -73,33 +73,33 @@ try {
     Write-Host "Setting up boot configuration..."
     bcdboot C:\Windows /s S: /f UEFI
 
-    # Create provisioning\autopilot folder if missing
+    # Create Autopilot provisioning folder
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     if (-not (Test-Path $AutopilotFolder)) {
         New-Item -Path $AutopilotFolder -ItemType Directory -Force | Out-Null
     }
 
-    # Create AutopilotConfigurationFile.json in Windows partition
+    # Create AutopilotConfigurationFile.json
     $AutopilotConfig = @{
-        CloudAssignedTenantId = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        GroupTag = $GroupTag
+        GroupTag                 = $GroupTag
     }
     $AutopilotConfigPath = "$AutopilotFolder\AutopilotConfigurationFile.json"
     Write-Host "Creating AutopilotConfigurationFile.json..."
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File -FilePath $AutopilotConfigPath -Encoding utf8
 
-    # Create OOBE.json for app removals and Autopilot settings
+    # Create OOBE.json
     $OOBEJson = @{
-        "CloudAssignedTenantId" = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
-        "CloudAssignedTenantDomain" = "obgpharma.onmicrosoft.com"
-        "DeviceType" = $GroupTag
-        "EnableUserStatusTracking" = $true
-        "EnableUserConfirmation" = $true
-        "EnableProvisioningDiagnostics" = $true
-        "DeviceLicensingType" = "WindowsEnterprise"
-        "Language" = "en-GB"
-        "RemovePreInstalledApps" = @(
+        CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
+        DeviceType                    = $GroupTag
+        EnableUserStatusTracking      = $true
+        EnableUserConfirmation        = $true
+        EnableProvisioningDiagnostics = $true
+        DeviceLicensingType           = "WindowsEnterprise"
+        Language                      = "en-GB"
+        RemovePreInstalledApps        = @(
             "Microsoft.ZuneMusic",
             "Microsoft.XboxApp",
             "Microsoft.XboxGameOverlay",
@@ -114,7 +114,7 @@ try {
     Write-Host "Creating OOBE.json..."
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File -FilePath $OOBEJsonPath -Encoding utf8
 
-    # Create unattend.xml to pre-configure region and keyboard
+    # Create unattend.xml
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     New-Item -ItemType Directory -Force -Path (Split-Path $UnattendPath) | Out-Null
     @"
@@ -131,11 +131,9 @@ try {
 </unattend>
 "@ | Out-File -Encoding utf8 -FilePath $UnattendPath
 
-    # Create SetupComplete.cmd to install script and register autopilot
+    # Create SetupComplete.cmd
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
-    Write-Host "Creating SetupComplete.cmd..."
-
-$SetupCompleteContent = @"
+    $SetupCompleteContent = @"
 @echo off
 echo ==== AUTOPILOT SETUP ==== >> C:\Autopilot-Diag.txt
 echo Timestamp: %DATE% %TIME% >> C:\Autopilot-Diag.txt
@@ -153,37 +151,31 @@ if exist "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot\OOBE.json" (
     echo MISSING: OOBE.json >> C:\Autopilot-Diag.txt
 )
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-"\$AutopilotOOBE = \$true; ^
-\$GroupTagID = '$GroupTag'; ^
-if (\$AutopilotOOBE) { ^
-    Write-Host -ForegroundColor Green 'AutoPilot Enabled'; ^
-    Write-Host 'Running Autopilot Registration' -ForegroundColor Cyan; ^
-    Write-Host 'Downloading and installing get-windowsautopilotinfo script'; ^
-    Install-Script -Name Get-WindowsAutoPilotInfo -Force -Verbose; ^
-    Write-Host 'Add Computer to Autopilot'; ^
-    Write-Host \"GroupTagID: \$GroupTagID\"; ^
-    Try { ^
-        Get-WindowsAutoPilotInfo.ps1 -GroupTag \$GroupTagID -Online -Assign; ^
-        Write-Host 'Successfully ran autopilot script' ^
-    } Catch { ^
-        Write-Host 'Error: Something went wrong. Unable to run autopilot script'; ^
-        Break ^
-    } ^
-} else { ^
-    Write-Host 'Autopilot OOBE is disabled, skipping registration.' ^
-}"
+powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ^
+ "\$GroupTagID = '$GroupTag'; ^
+  Write-Host -ForegroundColor Green 'AutoPilot Enabled'; ^
+  Write-Host 'Running Autopilot Registration' -ForegroundColor Cyan; ^
+  Write-Host 'Downloading and installing Get-WindowsAutoPilotInfo script'; ^
+  Install-Script -Name Get-WindowsAutoPilotInfo -Force -Verbose; ^
+  Write-Host 'Add Computer to Autopilot'; ^
+  Write-Host \"GroupTagID: \$GroupTagID\"; ^
+  Try { ^
+    & 'Get-WindowsAutoPilotInfo.ps1' -GroupTag \$GroupTagID -Online -Assign; ^
+    Write-Host 'Successfully ran autopilot script' ^
+  } Catch { ^
+    Write-Host 'Error: Something went wrong. Unable to run autopilot script'; ^
+  }"
+
 echo Autopilot hash upload completed >> C:\Autopilot-Diag.txt
 exit
 "@
-
     New-Item -ItemType Directory -Path (Split-Path $SetupCompletePath) -Force | Out-Null
     $SetupCompleteContent | Out-File -FilePath $SetupCompletePath -Encoding ASCII
     Write-Host "SetupComplete.cmd created successfully."
 
     Write-Host "Deployment script completed successfully. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    # Restart-Computer -Force
+    Restart-Computer -Force
 }
 catch {
     Write-Error "Deployment failed: $_"
