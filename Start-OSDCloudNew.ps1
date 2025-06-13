@@ -38,16 +38,11 @@ try {
     Initialize-Disk -Number $DiskNumber -PartitionStyle GPT
 
     # Create partitions
-    Write-Host "Creating EFI partition (100 MB)..."
     $EfiPartition = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
-    Write-Host "Creating MSR partition (128 MB)..."
     New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
-    Write-Host "Creating Data partition (10 GB)..."
     $DataPartition = New-Partition -DiskNumber $DiskNumber -Size 10GB
-    Write-Host "Creating Windows partition (remaining space)..."
     $WindowsPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
 
-    # Format and assign drive letters
     Format-Volume -Partition $EfiPartition -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $EfiPartition.PartitionNumber -NewDriveLetter S
     Format-Volume -Partition $DataPartition -FileSystem NTFS -NewFileSystemLabel "Data" -Confirm:$false
@@ -55,20 +50,21 @@ try {
     Format-Volume -Partition $WindowsPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $WindowsPartition.PartitionNumber -NewDriveLetter C
 
-    Write-Host "Partitions created: EFI (S:), Data (D:), Windows (C:)"
+    Write-Host "Partitions created with drive letters: EFI (S:), Data (D:), Windows (C:)"
 
-    # Apply WIM
-    Write-Host "Applying Windows image to C:..."
+    # Apply WIM image to C:
+    Write-Host "Applying Windows image to C: drive..."
     dism.exe /Apply-Image /ImageFile:E:\install.wim /Index:1 /ApplyDir:C:\
 
-    # Setup boot
+    # Setup boot files in EFI partition
+    Write-Host "Setting up boot configuration..."
     bcdboot C:\Windows /s S: /f UEFI
 
-    # Autopilot folder
+    # Create Autopilot provisioning folder
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     New-Item -ItemType Directory -Force -Path $AutopilotFolder | Out-Null
 
-    # Autopilot config JSON
+    # Create AutopilotConfigurationFile.json
     $AutopilotConfig = @{
         CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
@@ -76,7 +72,7 @@ try {
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
-    # OOBE.json
+    # Create OOBE.json
     $OOBEJson = @{
         CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
@@ -87,14 +83,19 @@ try {
         DeviceLicensingType           = "WindowsEnterprise"
         Language                      = "en-GB"
         RemovePreInstalledApps        = @(
-            "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
-            "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
-            "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder"
+            "Microsoft.ZuneMusic",
+            "Microsoft.XboxApp",
+            "Microsoft.XboxGameOverlay",
+            "Microsoft.XboxGamingOverlay",
+            "Microsoft.XboxSpeechToTextOverlay",
+            "Microsoft.YourPhone",
+            "Microsoft.Getstarted",
+            "Microsoft.3DBuilder"
         )
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
-    # Unattend.xml
+    # Create unattend.xml
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     New-Item -ItemType Directory -Force -Path (Split-Path $UnattendPath) | Out-Null
     @"
@@ -111,9 +112,9 @@ try {
 </unattend>
 "@ | Out-File -Encoding utf8 -FilePath $UnattendPath
 
-    # Download Autopilot script before reboot
+    # Download Get-WindowsAutoPilotInfo.ps1 from internal server
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
-    $AutoPilotScriptURL = "https://raw.githubusercontent.com/microsoft/WindowsAutopilotCompanion/master/Modules/Get-WindowsAutoPilotInfo.ps1"
+    $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
     New-Item -ItemType Directory -Path "C:\Autopilot" -Force | Out-Null
     try {
         Invoke-WebRequest -Uri $AutoPilotScriptURL -OutFile $AutoPilotScriptPath -UseBasicParsing -ErrorAction Stop
@@ -122,10 +123,9 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # SetupComplete.cmd
+    # Create SetupComplete.cmd
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
-    New-Item -ItemType Directory -Path (Split-Path $SetupCompletePath) -Force | Out-Null
-    @"
+    $SetupCompleteContent = @"
 @echo off
 set LOGFILE=C:\Autopilot-Diag.txt
 set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
@@ -141,12 +141,14 @@ if exist "%SCRIPT%" (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
 exit
-"@ | Out-File -FilePath $SetupCompletePath -Encoding ASCII
-    Write-Host "SetupComplete.cmd created successfully."
+"@
+    New-Item -ItemType Directory -Path (Split-Path $SetupCompletePath) -Force | Out-Null
+    $SetupCompleteContent | Out-File -FilePath $SetupCompletePath -Encoding ASCII
 
-    Write-Host "Deployment script completed. Rebooting in 5 seconds..."
+    Write-Host "SetupComplete.cmd created successfully."
+    Write-Host "Deployment script completed successfully. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    Restart-Computer -Force
+    # Restart-Computer -Force
 }
 catch {
     Write-Error "Deployment failed: $_"
