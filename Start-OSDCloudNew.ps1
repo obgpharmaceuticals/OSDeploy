@@ -52,19 +52,18 @@ try {
 
     Write-Host "Partitions created with drive letters: EFI (S:), Data (D:), Windows (C:)"
 
-    # Apply WIM image to C:
-    Write-Host "Applying Windows image to C: drive..."
+    # Apply WIM
+    Write-Host "Applying Windows image to C:..."
     dism.exe /Apply-Image /ImageFile:E:\install.wim /Index:1 /ApplyDir:C:\
 
-    # Setup boot files in EFI partition
-    Write-Host "Setting up boot configuration..."
+    # Setup boot
     bcdboot C:\Windows /s S: /f UEFI
 
-    # Create Autopilot provisioning folder
+    # Autopilot folder
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     New-Item -ItemType Directory -Force -Path $AutopilotFolder | Out-Null
 
-    # Create AutopilotConfigurationFile.json
+    # Autopilot config JSON
     $AutopilotConfig = @{
         CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
@@ -72,7 +71,7 @@ try {
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
-    # Create OOBE.json
+    # OOBE.json
     $OOBEJson = @{
         CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
@@ -83,19 +82,14 @@ try {
         DeviceLicensingType           = "WindowsEnterprise"
         Language                      = "en-GB"
         RemovePreInstalledApps        = @(
-            "Microsoft.ZuneMusic",
-            "Microsoft.XboxApp",
-            "Microsoft.XboxGameOverlay",
-            "Microsoft.XboxGamingOverlay",
-            "Microsoft.XboxSpeechToTextOverlay",
-            "Microsoft.YourPhone",
-            "Microsoft.Getstarted",
-            "Microsoft.3DBuilder"
+            "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
+            "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
+            "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder"
         )
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
-    # Create unattend.xml
+    # Unattend.xml
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     New-Item -ItemType Directory -Force -Path (Split-Path $UnattendPath) | Out-Null
     @"
@@ -112,7 +106,7 @@ try {
 </unattend>
 "@ | Out-File -Encoding utf8 -FilePath $UnattendPath
 
-    # Download Get-WindowsAutoPilotInfo.ps1 from internal server
+    # Download Get-WindowsAutoPilotInfo.ps1 from local server
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
     $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
     New-Item -ItemType Directory -Path "C:\Autopilot" -Force | Out-Null
@@ -123,7 +117,7 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # Create SetupComplete.cmd
+    # SetupComplete.cmd with ForceNoModule
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
 @echo off
@@ -135,7 +129,7 @@ echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 
 if exist "%SCRIPT%" (
     echo Running Get-WindowsAutoPilotInfo.ps1 >> %LOGFILE%
-    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
+    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -GroupTag "$GroupTag" -Online -Assign -ForceNoModule >> %LOGFILE% 2>&1
     echo Script completed >> %LOGFILE%
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
@@ -146,9 +140,9 @@ exit
     $SetupCompleteContent | Out-File -FilePath $SetupCompletePath -Encoding ASCII
 
     Write-Host "SetupComplete.cmd created successfully."
-    Write-Host "Deployment script completed successfully. Rebooting in 5 seconds..."
+    Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    # Restart-Computer -Force
+    Restart-Computer -Force
 }
 catch {
     Write-Error "Deployment failed: $_"
