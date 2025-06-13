@@ -37,7 +37,7 @@ try {
     Clear-Disk -Number $DiskNumber -RemoveData -Confirm:$false
     Initialize-Disk -Number $DiskNumber -PartitionStyle GPT
 
-    # Create partitions
+    # Create partitions WITHOUT drive letters assigned
     Write-Host "Creating EFI partition (100 MB)..."
     $EfiPartition = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     Write-Host "Creating MSR partition (128 MB)..."
@@ -63,13 +63,13 @@ try {
     Start-Sleep -Seconds 3
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $WindowsPartition.PartitionNumber -NewDriveLetter C
 
-    Write-Host "Partitions created: EFI (S:), Data (D:), Windows (C:)"
+    Write-Host "Partitions created with drive letters: EFI (S:), Data (D:), Windows (C:)"
 
-    # Apply WIM image to C:
-    Write-Host "Applying Windows image to C:..."
+    # Apply WIM image to C: (adjust path as needed)
+    Write-Host "Applying Windows image to C: drive..."
     dism.exe /Apply-Image /ImageFile:E:\install.wim /Index:1 /ApplyDir:C:\
 
-    # Setup boot files
+    # Setup boot files in EFI partition
     Write-Host "Setting up boot configuration..."
     bcdboot C:\Windows /s S: /f UEFI
 
@@ -85,7 +85,9 @@ try {
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
         GroupTag                 = $GroupTag
     }
-    $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File -FilePath "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
+    $AutopilotConfigPath = "$AutopilotFolder\AutopilotConfigurationFile.json"
+    Write-Host "Creating AutopilotConfigurationFile.json..."
+    $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File -FilePath $AutopilotConfigPath -Encoding utf8
 
     # Create OOBE.json
     $OOBEJson = @{
@@ -98,12 +100,19 @@ try {
         DeviceLicensingType           = "WindowsEnterprise"
         Language                      = "en-GB"
         RemovePreInstalledApps        = @(
-            "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
-            "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
-            "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder"
+            "Microsoft.ZuneMusic",
+            "Microsoft.XboxApp",
+            "Microsoft.XboxGameOverlay",
+            "Microsoft.XboxGamingOverlay",
+            "Microsoft.XboxSpeechToTextOverlay",
+            "Microsoft.YourPhone",
+            "Microsoft.Getstarted",
+            "Microsoft.3DBuilder"
         )
     }
-    $OOBEJson | ConvertTo-Json -Depth 5 | Out-File -FilePath "$AutopilotFolder\OOBE.json" -Encoding utf8
+    $OOBEJsonPath = "$AutopilotFolder\OOBE.json"
+    Write-Host "Creating OOBE.json..."
+    $OOBEJson | ConvertTo-Json -Depth 5 | Out-File -FilePath $OOBEJsonPath -Encoding utf8
 
     # Create unattend.xml
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
@@ -122,47 +131,37 @@ try {
 </unattend>
 "@ | Out-File -Encoding utf8 -FilePath $UnattendPath
 
+    # Download Autopilot script BEFORE reboot
+    $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
+    $AutoPilotScriptURL = "https://raw.githubusercontent.com/microsoft/WindowsAutopilotCompanion/master/Modules/Get-WindowsAutoPilotInfo.ps1"
+    New-Item -ItemType Directory -Path "C:\Autopilot" -Force | Out-Null
+    Write-Host "Downloading Get-WindowsAutoPilotInfo.ps1..."
+    Invoke-WebRequest -Uri $AutoPilotScriptURL -OutFile $AutoPilotScriptPath -UseBasicParsing
+
     # Create SetupComplete.cmd
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
-    New-Item -ItemType Directory -Path (Split-Path $SetupCompletePath) -Force | Out-Null
-    @"
+    $SetupCompleteContent = @"
 @echo off
-echo ==== AUTOPILOT SETUP ==== >> C:\Autopilot-Diag.txt
-echo Timestamp: %DATE% %TIME% >> C:\Autopilot-Diag.txt
-echo Checking JSON files... >> C:\Autopilot-Diag.txt
+set LOGFILE=C:\Autopilot-Diag.txt
+set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
 
-if exist "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot\AutopilotConfigurationFile.json" (
-    echo Found AutopilotConfigurationFile.json >> C:\Autopilot-Diag.txt
+echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
+echo Timestamp: %DATE% %TIME% >> %LOGFILE%
+
+if exist "%SCRIPT%" (
+    echo Running Get-WindowsAutoPilotInfo.ps1 >> %LOGFILE%
+    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
+    echo Script completed >> %LOGFILE%
 ) else (
-    echo MISSING: AutopilotConfigurationFile.json >> C:\Autopilot-Diag.txt
+    echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
-
-if exist "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot\OOBE.json" (
-    echo Found OOBE.json >> C:\Autopilot-Diag.txt
-) else (
-    echo MISSING: OOBE.json >> C:\Autopilot-Diag.txt
-)
-
-powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ^
- "\$GroupTagID = '$GroupTag'; ^
-  Write-Host -ForegroundColor Green 'AutoPilot Enabled'; ^
-  Write-Host 'Installing Get-WindowsAutoPilotInfo script'; ^
-  Install-Script -Name Get-WindowsAutoPilotInfo -Force -Scope AllUsers; ^
-  \$ScriptPath = Join-Path \$env:ProgramFiles 'WindowsPowerShell\Scripts\Get-WindowsAutoPilotInfo.ps1'; ^
-  if (Test-Path \$ScriptPath) { ^
-      Write-Host 'Running Autopilot script...'; ^
-      & \$ScriptPath -GroupTag \$GroupTagID -Online -Assign; ^
-      Write-Host 'Autopilot script completed successfully'; ^
-  } else { ^
-      Write-Host 'ERROR: Get-WindowsAutoPilotInfo.ps1 not found'; ^
-  }"
-
-echo Autopilot hash upload completed >> C:\Autopilot-Diag.txt
 exit
-"@ | Out-File -FilePath $SetupCompletePath -Encoding ASCII
-
+"@
+    New-Item -ItemType Directory -Path (Split-Path $SetupCompletePath) -Force | Out-Null
+    $SetupCompleteContent | Out-File -FilePath $SetupCompletePath -Encoding ASCII
     Write-Host "SetupComplete.cmd created successfully."
-    Write-Host "Deployment script completed. Rebooting in 5 seconds..."
+
+    Write-Host "Deployment script completed successfully. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     Restart-Computer -Force
 }
