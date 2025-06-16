@@ -117,8 +117,10 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # SetupComplete.cmd using client credentials
+    # SetupComplete.cmd with retry logic and dynamic GroupTag
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
+    $escapedGroupTag = $GroupTag -replace '"', '\"'
+
     $SetupCompleteContent = @"
 @echo off
 set LOGFILE=C:\Autopilot-Diag.txt
@@ -128,22 +130,18 @@ echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
 echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 
 if exist "%SCRIPT%" (
-    echo Collecting hardware hash... >> %LOGFILE%
-    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" ^
-        -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" ^
-        -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" ^
-        -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" ^
-        -GroupTag "$GroupTag" -Online -Assign -Verbose -DiagnosticsOutputFile "C:\Autopilot-Hash.json" >> %LOGFILE% 2>&1
-    echo Script completed >> %LOGFILE%
+    powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ^
+    "`$retries = 3; `$success = `$false; for (`$i = 1; `$i -le `$retries; `$i++) { try { & '`"$SCRIPT`"' -TenantId 'c95ebf8f-ebb1-45ad-8ef4-463fa94051ee' -AppId 'faa1bc75-81c7-4750-ac62-1e5ea3ac48c5' -AppSecret 'ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-' -GroupTag '$escapedGroupTag' -Online -Assign; `$success = `$true; break } catch { Add-Content -Path '`"$LOGFILE`"' -Value ('Attempt {0} failed: {1}' -f `$i, `$_); Start-Sleep -Seconds 10 } }; if (-not `$success) { Add-Content -Path '`"$LOGFILE`"' -Value 'All upload attempts failed.' }"
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
-exit /b 0
+exit
 "@
+
     New-Item -ItemType Directory -Path (Split-Path $SetupCompletePath) -Force | Out-Null
     $SetupCompleteContent | Out-File -FilePath $SetupCompletePath -Encoding ASCII
-    Write-Host "SetupComplete.cmd created successfully with GroupTag: $GroupTag" -ForegroundColor Green
 
+    Write-Host "SetupComplete.cmd created successfully."
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     Restart-Computer -Force
