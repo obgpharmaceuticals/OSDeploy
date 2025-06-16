@@ -143,9 +143,9 @@ exit
     $SetupCompleteContent | Out-File -FilePath $SetupCompletePath -Encoding ASCII
 
     Write-Host "SetupComplete.cmd created successfully."
-    Write-Host "Deployment script completed. Rebooting in 5 seconds..."
+    Write-Host "Deployment script completed. Shutting down for first boot."
     Start-Sleep -Seconds 5
-    Restart-Computer -Force
+    shutdown.exe /s /t 0
 }
 catch {
     Write-Error "Deployment failed: $_"
