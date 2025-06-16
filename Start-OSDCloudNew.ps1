@@ -52,18 +52,19 @@ try {
 
     Write-Host "Partitions created with drive letters: EFI (S:), Data (D:), Windows (C:)"
 
-    # Apply WIM
-    Write-Host "Applying Windows image to C:..."
+    # Apply WIM image
+    Write-Host "Applying Windows image to C: drive..."
     dism.exe /Apply-Image /ImageFile:E:\install.wim /Index:1 /ApplyDir:C:\
 
-    # Setup boot
+    # Setup boot files
+    Write-Host "Setting up boot configuration..."
     bcdboot C:\Windows /s S: /f UEFI
 
-    # Autopilot folder
+    # Create Autopilot folder
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     New-Item -ItemType Directory -Force -Path $AutopilotFolder | Out-Null
 
-    # Autopilot config JSON
+    # Create AutopilotConfigurationFile.json
     $AutopilotConfig = @{
         CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
@@ -71,7 +72,7 @@ try {
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
-    # OOBE.json
+    # Create OOBE.json
     $OOBEJson = @{
         CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
@@ -89,7 +90,7 @@ try {
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
-    # Unattend.xml
+    # Create unattend.xml
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     New-Item -ItemType Directory -Force -Path (Split-Path $UnattendPath) | Out-Null
     @"
@@ -117,7 +118,7 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # SetupComplete.cmd with ForceNoModule
+    # SetupComplete.cmd
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
 @echo off
@@ -129,7 +130,7 @@ echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 
 if exist "%SCRIPT%" (
     echo Running Get-WindowsAutoPilotInfo.ps1 >> %LOGFILE%
-    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -GroupTag "$GroupTag" -Online -Assign -ForceNoModule >> %LOGFILE% 2>&1
+    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
     echo Script completed >> %LOGFILE%
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
@@ -140,7 +141,7 @@ exit
     $SetupCompleteContent | Out-File -FilePath $SetupCompletePath -Encoding ASCII
 
     Write-Host "SetupComplete.cmd created successfully."
-    Write-Host "Deployment script completed. Rebooting in 5 seconds..."
+    Write-Host "Deployment complete. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     Restart-Computer -Force
 }
