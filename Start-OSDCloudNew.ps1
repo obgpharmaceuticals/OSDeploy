@@ -2,7 +2,7 @@
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
-    Write-Host "Starting deployment..." -ForegroundColor Cyan
+    Write-Host "Starting deployment Windows 11..." -ForegroundColor Cyan
 
     # Prompt for system type
     Write-Host "Select system type:"
@@ -38,35 +38,39 @@ try {
     Initialize-Disk -Number $DiskNumber -PartitionStyle GPT
 
     # Create partitions
-    $ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}" -AssignDriveLetter
-    $MSR = New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}"
-    $DataPartition = New-Partition -DiskNumber $DiskNumber -Size 10GB -AssignDriveLetter
-    $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize -AssignDriveLetter
+    $ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "efi"
+    New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "msr" | Out-Null
+    $DataPartition = New-Partition -DiskNumber $DiskNumber -Size 10GB
+    $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
 
-    # Format partitions
+    # Format volumes with labels
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
+    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -NewDriveLetter S
     Format-Volume -Partition $DataPartition -FileSystem NTFS -NewFileSystemLabel "Data" -Confirm:$false
+    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $DataPartition.PartitionNumber -NewDriveLetter D
     Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
+    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
 
-    # Assign drive letters
-    $ESPDrive = ($ESP | Get-Partition).DriveLetter + ":"
-    $DataDrive = ($DataPartition | Get-Partition).DriveLetter + ":"
-    $OSDrive = ($OSPartition | Get-Partition).DriveLetter + ":"
+    Write-Host "Partitions created: EFI (S:), Data (D:), Windows (C:)"
 
-    Write-Host "Partitions created: EFI ($ESPDrive), Data ($DataDrive), Windows ($OSDrive)"
+    # Apply WIM
+    $WimPath = "D:\install.wim"
+    if (-not (Test-Path $WimPath)) {
+        throw "WIM file not found at $WimPath"
+    }
+    Write-Host "Applying Windows image from $WimPath to C:..."
+    $dism = Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image", "/ImageFile:$WimPath", "/Index:1", "/ApplyDir:C:\" -Wait -PassThru
+    if ($dism.ExitCode -ne 0) {
+        throw "DISM failed with exit code $($dism.ExitCode)"
+    }
 
-    # Apply Windows image
-    Write-Host "Applying Windows image to $OSDrive..."
-    dism.exe /Apply-Image /ImageFile:E:\install.wim /Index:1 /ApplyDir:$OSDrive
+    # Setup boot
+    bcdboot C:\Windows /s S: /f UEFI
 
-    # Setup boot files
-    bcdboot "$OSDrive\Windows" /s $ESPDrive /f UEFI
-
-    # Autopilot folder
-    $AutopilotFolder = "$OSDrive\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
+    # Autopilot folder and files
+    $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     New-Item -ItemType Directory -Force -Path $AutopilotFolder | Out-Null
 
-    # AutopilotConfigurationFile.json
     $AutopilotConfig = @{
         CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
@@ -74,7 +78,6 @@ try {
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
-    # OOBE.json
     $OOBEJson = @{
         CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
@@ -93,7 +96,7 @@ try {
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
     # Unattend.xml
-    $UnattendPath = "$OSDrive\Windows\Panther\Unattend\Unattend.xml"
+    $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     New-Item -ItemType Directory -Force -Path (Split-Path $UnattendPath) | Out-Null
     @"
 <?xml version="1.0" encoding="utf-8"?>
@@ -109,16 +112,20 @@ try {
 </unattend>
 "@ | Out-File -Encoding utf8 -FilePath $UnattendPath
 
-    # Download Autopilot script
-    $AutoPilotScriptPath = "$OSDrive\Autopilot\Get-WindowsAutoPilotInfo.ps1"
+    # Download Get-WindowsAutoPilotInfo script
+    $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
     $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
-    New-Item -ItemType Directory -Path "$OSDrive\Autopilot" -Force | Out-Null
-    Invoke-WebRequest -Uri $AutoPilotScriptURL -OutFile $AutoPilotScriptPath -UseBasicParsing
+    New-Item -ItemType Directory -Path "C:\Autopilot" -Force | Out-Null
+    try {
+        Invoke-WebRequest -Uri $AutoPilotScriptURL -OutFile $AutoPilotScriptPath -UseBasicParsing -ErrorAction Stop
+        Write-Host "Downloaded Get-WindowsAutoPilotInfo.ps1 successfully."
+    } catch {
+        Write-Warning "Failed to download Autopilot script: $_"
+    }
 
-    # Write SetupComplete.cmd
-    $SetupCompletePath = "$OSDrive\Windows\Setup\Scripts\SetupComplete.cmd"
-    New-Item -ItemType Directory -Path (Split-Path $SetupCompletePath) -Force | Out-Null
-    @"
+    # SetupComplete.cmd
+    $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
+    $SetupCompleteContent = @"
 @echo off
 set LOGFILE=C:\Autopilot-Diag.txt
 set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
@@ -128,15 +135,18 @@ echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 
 if exist "%SCRIPT%" (
     powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ^
-    "$retries = 3; $success = $false; for (`$i = 1; `$i -le $retries; `$i++) { try { & '%SCRIPT%' -TenantId 'c95ebf8f-ebb1-45ad-8ef4-463fa94051ee' -AppId 'faa1bc75-81c7-4750-ac62-1e5ea3ac48c5' -AppSecret 'ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-' -GroupTag '$GroupTag' -Online -Assign; `$success = $true; break } catch { Add-Content -Path '%LOGFILE%' -Value ('Attempt {0} failed: {1}' -f `$i, `$_); Start-Sleep -Seconds 10 } }; if (-not `$success) { Add-Content -Path '%LOGFILE%' -Value 'All upload attempts failed.' }"
+    "$retries = 3; $success = $false; for ($i = 1; $i -le $retries; $i++) { try { & '%SCRIPT%' -TenantId 'c95ebf8f-ebb1-45ad-8ef4-463fa94051ee' -AppId 'faa1bc75-81c7-4750-ac62-1e5ea3ac48c5' -AppSecret 'ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-' -GroupTag '$GroupTag' -Online -Assign; $success = $true; break } catch { Add-Content -Path '%LOGFILE%' -Value ('Attempt {0} failed: {1}' -f $i, $_); Start-Sleep -Seconds 10 } }; if (-not $success) { Add-Content -Path '%LOGFILE%' -Value 'All upload attempts failed.' }"
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
 exit
-"@ | Out-File -FilePath $SetupCompletePath -Encoding ASCII
+"@
+
+    New-Item -ItemType Directory -Path (Split-Path $SetupCompletePath) -Force | Out-Null
+    $SetupCompleteContent | Out-File -FilePath $SetupCompletePath -Encoding ASCII
 
     Write-Host "SetupComplete.cmd created successfully."
-    Write-Host "Deployment complete. Rebooting in 5 seconds..."
+    Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     # Restart-Computer -Force
 }
