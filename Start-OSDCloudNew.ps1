@@ -117,7 +117,7 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # SetupComplete.cmd with retry logic and dynamic GroupTag
+    # SetupComplete.cmd with retry logic
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $escapedGroupTag = $GroupTag -replace '"', '\"'
 
