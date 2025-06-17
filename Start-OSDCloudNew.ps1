@@ -54,7 +54,7 @@ try {
     Write-Host "Partitions created: EFI (S:), Data (D:), Windows (C:)"
 
     # Apply WIM
-    $WimPath = "D:\install.wim"
+    $WimPath = "E:\install.wim"
     if (-not (Test-Path $WimPath)) {
         throw "WIM file not found at $WimPath"
     }
