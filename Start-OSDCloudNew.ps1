@@ -54,7 +54,7 @@ try {
 
     # Apply WIM
     Write-Host "Applying Windows image to C:..."
-    dism.exe /Apply-Image /ImageFile:E:\install.wim /Index:1 /ApplyDir:C:\
+    dism.exe /Apply-Image /ImageFile:D:\install.wim /Index:1 /ApplyDir:C:\
 
     # Setup boot
     bcdboot C:\Windows /s S: /f UEFI
@@ -65,9 +65,9 @@ try {
 
     # Autopilot config JSON
     $AutopilotConfig = @{
-        CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantId     = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        GroupTag                 = $GroupTag
+        GroupTag                  = $GroupTag
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
@@ -106,22 +106,17 @@ try {
 </unattend>
 "@ | Out-File -Encoding utf8 -FilePath $UnattendPath
 
-    # Download Autopilot script
+    # Download Get-WindowsAutoPilotInfo.ps1
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
     $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
     New-Item -ItemType Directory -Path "C:\Autopilot" -Force | Out-Null
-    try {
-        Invoke-WebRequest -Uri $AutoPilotScriptURL -OutFile $AutoPilotScriptPath -UseBasicParsing -ErrorAction Stop
-        Write-Host "Downloaded Get-WindowsAutoPilotInfo.ps1 successfully."
-    } catch {
-        Write-Warning "Failed to download Autopilot script: $_"
-    }
+    Invoke-WebRequest -Uri $AutoPilotScriptURL -OutFile $AutoPilotScriptPath -UseBasicParsing
 
-    # SetupComplete.cmd with retry logic
+    # SetupComplete.cmd
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
-    $escapedGroupTag = $GroupTag -replace '"', '\"'
+    New-Item -ItemType Directory -Path (Split-Path $SetupCompletePath) -Force | Out-Null
 
-    $SetupCompleteContent = @"
+    @"
 @echo off
 set LOGFILE=C:\Autopilot-Diag.txt
 set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
@@ -131,15 +126,12 @@ echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 
 if exist "%SCRIPT%" (
     powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ^
-    "`$retries = 3; `$success = `$false; for (`$i = 1; `$i -le `$retries; `$i++) { try { & '`"$SCRIPT`"' -TenantId 'c95ebf8f-ebb1-45ad-8ef4-463fa94051ee' -AppId 'faa1bc75-81c7-4750-ac62-1e5ea3ac48c5' -AppSecret 'ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-' -GroupTag '$escapedGroupTag' -Online -Assign; `$success = `$true; break } catch { Add-Content -Path '`"$LOGFILE`"' -Value ('Attempt {0} failed: {1}' -f `$i, `$_); Start-Sleep -Seconds 10 } }; if (-not `$success) { Add-Content -Path '`"$LOGFILE`"' -Value 'All upload attempts failed.' }"
+    "`$retries = 3; `$success = `$false; for (`$i = 1; `$i -le `$retries; `$i++) { try { & '`"%SCRIPT%`"' -TenantId 'c95ebf8f-ebb1-45ad-8ef4-463fa94051ee' -AppId 'faa1bc75-81c7-4750-ac62-1e5ea3ac48c5' -AppSecret 'ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-' -GroupTag '$GroupTag' -Online -Assign; `$success = `$true; break } catch { Add-Content -Path '`"%LOGFILE%`"' -Value ('Attempt {0} failed: {1}' -f `$i, `$_); Start-Sleep -Seconds 10 } }; if (-not `$success) { Add-Content -Path '`"%LOGFILE%`"' -Value 'All upload attempts failed.' }"
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
 exit
-"@
-
-    New-Item -ItemType Directory -Path (Split-Path $SetupCompletePath) -Force | Out-Null
-    $SetupCompleteContent | Out-File -FilePath $SetupCompletePath -Encoding ASCII
+"@ | Set-Content -Path $SetupCompletePath -Encoding ASCII
 
     Write-Host "SetupComplete.cmd created successfully."
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
