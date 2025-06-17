@@ -2,7 +2,7 @@
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
-    Write-Host "Starting deployment Windows 11..." -ForegroundColor Cyan
+    Write-Host "Starting deployment of Win11..." -ForegroundColor Cyan
 
     # Prompt for system type
     Write-Host "Select system type:"
@@ -38,8 +38,8 @@ try {
     Initialize-Disk -Number $DiskNumber -PartitionStyle GPT
 
     # Create partitions
-    $ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "efi"
-    New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "msr" | Out-Null
+    $ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
+    $MSR = New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
     $DataPartition = New-Partition -DiskNumber $DiskNumber -Size 10GB
     $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
 
@@ -135,7 +135,7 @@ echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 
 if exist "%SCRIPT%" (
     powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ^
-    "$retries = 3; $success = $false; for ($i = 1; $i -le $retries; $i++) { try { & '%SCRIPT%' -TenantId 'c95ebf8f-ebb1-45ad-8ef4-463fa94051ee' -AppId 'faa1bc75-81c7-4750-ac62-1e5ea3ac48c5' -AppSecret 'ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-' -GroupTag '$GroupTag' -Online -Assign; $success = $true; break } catch { Add-Content -Path '%LOGFILE%' -Value ('Attempt {0} failed: {1}' -f $i, $_); Start-Sleep -Seconds 10 } }; if (-not $success) { Add-Content -Path '%LOGFILE%' -Value 'All upload attempts failed.' }"
+    "$retries = 3; $success = \$false; for (\$i = 1; \$i -le \$retries; \$i++) { try { & '%SCRIPT%' -TenantId 'c95ebf8f-ebb1-45ad-8ef4-463fa94051ee' -AppId 'faa1bc75-81c7-4750-ac62-1e5ea3ac48c5' -AppSecret 'ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-' -GroupTag '$GroupTag' -Online -Assign; \$success = \$true; break } catch { Add-Content -Path '%LOGFILE%' -Value ('Attempt {0} failed: {1}' -f \$i, \$_); Start-Sleep -Seconds 10 } }; if (-not \$success) { Add-Content -Path '%LOGFILE%' -Value 'All upload attempts failed.' }"
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
