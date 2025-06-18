@@ -24,7 +24,6 @@ try {
     # Select and prepare disk
     $Disk = Get-Disk | Where-Object {
         $_.OperationalStatus -eq 'Online' -and
-        ($_.PartitionStyle -eq 'RAW' -or $_.PartitionStyle -eq 'GPT') -and
         $_.Size -gt 30GB
     } | Sort-Object Size -Descending | Select-Object -First 1
 
@@ -32,10 +31,15 @@ try {
     $DiskNumber = $Disk.Number
     Write-Host "Selected disk $DiskNumber (Size: $([math]::Round($Disk.Size/1GB,2)) GB)"
 
-    # Clean and initialize disk
-    Write-Host "Cleaning disk $DiskNumber..."
-    Clear-Disk -Number $DiskNumber -RemoveData -Confirm:$false
-    Initialize-Disk -Number $DiskNumber -PartitionStyle GPT
+    # Clear disk using diskpart to remove OEM/protected partitions
+    $diskpartScript = @"
+select disk $DiskNumber
+clean
+convert gpt
+"@
+    $diskpartScriptPath = "X:\clean.txt"
+    $diskpartScript | Out-File -FilePath $diskpartScriptPath -Encoding ASCII
+    diskpart /s $diskpartScriptPath
 
     # Create partitions
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
