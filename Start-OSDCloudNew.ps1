@@ -142,7 +142,12 @@ if exist "%SCRIPT%" (
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
-exit
+
+echo Waiting 300 seconds (5 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
+timeout /t 300 /nobreak > nul
+
+echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
+exit /b 0
 "@
 
     New-Item -ItemType Directory -Path (Split-Path $SetupCompletePath) -Force | Out-Null
