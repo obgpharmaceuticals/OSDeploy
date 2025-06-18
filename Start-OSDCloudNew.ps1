@@ -2,7 +2,7 @@
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
-    Write-Host "Starting deployment..." -ForegroundColor Cyan
+    Write-Host "Starting Windows 11 deployment..." -ForegroundColor Cyan
 
     # Prompt for system type
     Write-Host "Select system type:"
