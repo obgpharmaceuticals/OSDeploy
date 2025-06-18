@@ -2,7 +2,7 @@
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
-    Write-Host "Starting Windows 11 deployment..." -ForegroundColor Cyan
+    Write-Host "Starting deployment..." -ForegroundColor Cyan
 
     # Prompt for system type
     Write-Host "Select system type:"
@@ -31,15 +31,20 @@ try {
     $DiskNumber = $Disk.Number
     Write-Host "Selected disk $DiskNumber (Size: $([math]::Round($Disk.Size/1GB,2)) GB)"
 
-    # Clear disk using diskpart to remove OEM/protected partitions
-    $diskpartScript = @"
-select disk $DiskNumber
-clean
-convert gpt
-"@
-    $diskpartScriptPath = "X:\clean.txt"
-    $diskpartScript | Out-File -FilePath $diskpartScriptPath -Encoding ASCII
-    diskpart /s $diskpartScriptPath
+    # Remove OEM/Recovery partitions
+    $partitions = Get-Partition -DiskNumber $DiskNumber -ErrorAction SilentlyContinue
+    foreach ($part in $partitions) {
+        try {
+            Remove-Partition -DiskNumber $DiskNumber -PartitionNumber $part.PartitionNumber -Confirm:$false -ErrorAction Stop
+        } catch {
+            Write-Warning "Could not remove partition $($part.PartitionNumber): $_"
+        }
+    }
+
+    # Clean and initialize disk
+    Write-Host "Cleaning disk $DiskNumber..."
+    Clear-Disk -Number $DiskNumber -RemoveData -Confirm:$false
+    Initialize-Disk -Number $DiskNumber -PartitionStyle GPT
 
     # Create partitions
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
@@ -47,13 +52,21 @@ convert gpt
     $DataPartition = New-Partition -DiskNumber $DiskNumber -Size 10GB
     $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
 
-    # Format volumes with labels
-    Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
-    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -NewDriveLetter S
-    Format-Volume -Partition $DataPartition -FileSystem NTFS -NewFileSystemLabel "Data" -Confirm:$false
-    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $DataPartition.PartitionNumber -NewDriveLetter D
-    Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
-    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
+    # Format and assign drive letters safely
+    if (-not ($ESP | Get-Volume -ErrorAction SilentlyContinue)) {
+        Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
+    }
+    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -NewDriveLetter S -ErrorAction SilentlyContinue
+
+    if (-not ($DataPartition | Get-Volume -ErrorAction SilentlyContinue)) {
+        Format-Volume -Partition $DataPartition -FileSystem NTFS -NewFileSystemLabel "Data" -Confirm:$false
+    }
+    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $DataPartition.PartitionNumber -NewDriveLetter D -ErrorAction SilentlyContinue
+
+    if (-not ($OSPartition | Get-Volume -ErrorAction SilentlyContinue)) {
+        Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
+    }
+    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C -ErrorAction SilentlyContinue
 
     Write-Host "Partitions created: EFI (S:), Data (D:), Windows (C:)"
 
@@ -102,7 +115,7 @@ convert gpt
     # Unattend.xml
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     New-Item -ItemType Directory -Force -Path (Split-Path $UnattendPath) | Out-Null
-    @"
+@"
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
   <settings pass="oobeSystem">
