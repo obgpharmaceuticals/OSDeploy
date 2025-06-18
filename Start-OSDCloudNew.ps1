@@ -24,6 +24,7 @@ try {
     # Select and prepare disk
     $Disk = Get-Disk | Where-Object {
         $_.OperationalStatus -eq 'Online' -and
+        ($_.PartitionStyle -eq 'RAW' -or $_.PartitionStyle -eq 'GPT') -and
         $_.Size -gt 30GB
     } | Sort-Object Size -Descending | Select-Object -First 1
 
@@ -31,44 +32,40 @@ try {
     $DiskNumber = $Disk.Number
     Write-Host "Selected disk $DiskNumber (Size: $([math]::Round($Disk.Size/1GB,2)) GB)"
 
-    # Remove OEM/Recovery partitions
-    $partitions = Get-Partition -DiskNumber $DiskNumber -ErrorAction SilentlyContinue
-    foreach ($part in $partitions) {
-        try {
-            Remove-Partition -DiskNumber $DiskNumber -PartitionNumber $part.PartitionNumber -Confirm:$false -ErrorAction Stop
-        } catch {
-            Write-Warning "Could not remove partition $($part.PartitionNumber): $_"
-        }
-    }
-
     # Clean and initialize disk
     Write-Host "Cleaning disk $DiskNumber..."
     Clear-Disk -Number $DiskNumber -RemoveData -Confirm:$false
     Initialize-Disk -Number $DiskNumber -PartitionStyle GPT
+    Start-Sleep -Seconds 3
 
     # Create partitions
+    Write-Host "Creating partitions..."
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     $MSR = New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
     $DataPartition = New-Partition -DiskNumber $DiskNumber -Size 10GB
     $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
+    Start-Sleep -Seconds 2
 
-    # Format and assign drive letters safely
-    if (-not ($ESP | Get-Volume -ErrorAction SilentlyContinue)) {
-        Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
-    }
+    # Format and assign ESP
+    Write-Host "Formatting ESP partition..."
+    Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -NewDriveLetter S -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
 
-    if (-not ($DataPartition | Get-Volume -ErrorAction SilentlyContinue)) {
-        Format-Volume -Partition $DataPartition -FileSystem NTFS -NewFileSystemLabel "Data" -Confirm:$false
-    }
+    # Format and assign Data
+    Write-Host "Formatting Data partition..."
+    Format-Volume -Partition $DataPartition -FileSystem NTFS -NewFileSystemLabel "Data" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $DataPartition.PartitionNumber -NewDriveLetter D -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
 
-    if (-not ($OSPartition | Get-Volume -ErrorAction SilentlyContinue)) {
-        Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
-    }
+    # Format and assign OS
+    Write-Host "Formatting OS partition..."
+    Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
 
-    Write-Host "Partitions created: EFI (S:), Data (D:), Windows (C:)"
+    # Verify partitions
+    Get-Volume | Where-Object { $_.DriveLetter -in 'C','D','S' } | Format-Table DriveLetter, FileSystem, FileSystemLabel, HealthStatus
 
     # Apply WIM
     $WimPath = "E:\install.wim"
@@ -84,14 +81,14 @@ try {
     # Setup boot
     bcdboot C:\Windows /s S: /f UEFI
 
-    # Autopilot folder and files
+    # Autopilot configuration
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     New-Item -ItemType Directory -Force -Path $AutopilotFolder | Out-Null
 
     $AutopilotConfig = @{
-        CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantId     = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        GroupTag                 = $GroupTag
+        GroupTag                  = $GroupTag
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
@@ -115,7 +112,7 @@ try {
     # Unattend.xml
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     New-Item -ItemType Directory -Force -Path (Split-Path $UnattendPath) | Out-Null
-@"
+    @"
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
   <settings pass="oobeSystem">
@@ -166,7 +163,6 @@ timeout /t 300 /nobreak > nul
 echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
 exit /b 0
 "@
-
     New-Item -ItemType Directory -Path (Split-Path $SetupCompletePath) -Force | Out-Null
     $SetupCompleteContent | Out-File -FilePath $SetupCompletePath -Encoding ASCII
 
