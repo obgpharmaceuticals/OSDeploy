@@ -138,7 +138,7 @@ timeout /t 10 > nul
 
 if exist "%SCRIPT%" (
     powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ^
-    "`$retries = 3; `$success = `$false; for (`$i = 1; `$i -le `$retries; `$i++) { try { & '%SCRIPT%' -TenantId 'c95ebf8f-ebb1-45ad-8ef4-463fa94051ee' -AppId 'faa1bc75-81c7-4750-ac62-1e5ea3ac48c5' -AppSecret 'ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-' -GroupTag '$escapedGroupTag' -Online -Assign; `$success = `$true; break } catch { Add-Content -Path '%LOGFILE%' -Value ('Attempt {0} failed: {1}' -f `$i, `$_); Start-Sleep -Seconds 10 } }; if (-not `$success) { Add-Content -Path '%LOGFILE%' -Value 'All upload attempts failed.' }"
+    "`$retries = 3; `$success = `$false; for (`$i = 1; `$i -le `$retries; `$i++) { try { & '%SCRIPT%' -TenantId 'c95ebf8f-ebb1-45ad-8ef4-463fa94051ee' -AppId 'faa1bc75-81c7-4750-ac62-1e5ea3ac48c5' -AppSecret 'ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-' -GroupTag '$escapedGroupTag' -Online -Assign; `$success = `$true; break } catch { Add-Content -Path '%LOGFILE%' -Value ('Attempt {0} failed: {1}' -f `$i, `$_); Start-Sleep -Seconds 20 } }; if (-not `$success) { Add-Content -Path '%LOGFILE%' -Value 'All upload attempts failed.' }"
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
