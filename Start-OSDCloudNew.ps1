@@ -51,9 +51,9 @@ try {
 
     Write-Host "Partitions created: EFI (S:), Windows (C:)"
 
-    # Map network share as E:
+    # Map network share as M:
     $NetworkPath = "\\10.1.192.20\ReadOnlyShare"
-    $DriveLetter = "E:"
+    $DriveLetter = "M:"
     if (Test-Path $DriveLetter) {
         Write-Host "Drive $DriveLetter already in use, removing..."
         Remove-PSDrive -Name $DriveLetter.TrimEnd(':') -Force -ErrorAction SilentlyContinue
@@ -62,7 +62,7 @@ try {
     net use $DriveLetter $NetworkPath /persistent:no | Out-Null
 
     # Apply WIM
-    $WimPath = "E:\install.wim"
+    $WimPath = "M:\install.wim"
     if (-not (Test-Path $WimPath)) {
         throw "WIM file not found at $WimPath"
     }
