@@ -40,20 +40,26 @@ try {
     # Create partitions
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     $MSR = New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
-    $DataPartition = New-Partition -DiskNumber $DiskNumber -Size 10GB
     $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
 
     # Format volumes
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -NewDriveLetter S -ErrorAction SilentlyContinue
 
-    Format-Volume -Partition $DataPartition -FileSystem NTFS -NewFileSystemLabel "Data" -Confirm:$false
-    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $DataPartition.PartitionNumber -NewDriveLetter D -ErrorAction SilentlyContinue
-
     Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C -ErrorAction SilentlyContinue
 
-    Write-Host "Partitions created: EFI (S:), Data (D:), Windows (C:)"
+    Write-Host "Partitions created: EFI (S:), Windows (C:)"
+
+    # Map network share as E:
+    $NetworkPath = "\\10.1.192.20\ReadOnlyShare"
+    $DriveLetter = "E:"
+    if (Test-Path $DriveLetter) {
+        Write-Host "Drive $DriveLetter already in use, removing..."
+        Remove-PSDrive -Name $DriveLetter.TrimEnd(':') -Force -ErrorAction SilentlyContinue
+    }
+    Write-Host "Mapping $DriveLetter to $NetworkPath..."
+    net use $DriveLetter $NetworkPath /persistent:no | Out-Null
 
     # Apply WIM
     $WimPath = "E:\install.wim"
