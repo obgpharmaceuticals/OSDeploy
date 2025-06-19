@@ -2,7 +2,7 @@
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
-    Write-Host "Starting deployment..." -ForegroundColor Cyan
+    Write-Host "Starting Windows 11 deployment..." -ForegroundColor Cyan
 
     # Prompt for system type
     Write-Host "Select system type:"
@@ -51,15 +51,26 @@ try {
 
     Write-Host "Partitions created: EFI (S:), Windows (C:)"
 
+    # Wait for network connectivity
+    Write-Host "Waiting for network connectivity..."
+    for ($i = 0; $i -lt 30; $i++) {
+        if (Test-Connection -ComputerName 10.1.192.20 -Count 1 -Quiet) {
+            Write-Host "Network is available."
+            break
+        }
+        Start-Sleep -Seconds 2
+        if ($i -eq 29) { throw "Network not available after timeout." }
+    }
+
     # Map network share as M:
     $NetworkPath = "\\10.1.192.20\ReadOnlyShare"
     $DriveLetter = "M:"
-    if (Test-Path $DriveLetter) {
-        Write-Host "Drive $DriveLetter already in use, removing..."
-        Remove-PSDrive -Name $DriveLetter.TrimEnd(':') -Force -ErrorAction SilentlyContinue
-    }
+    net use $DriveLetter /delete /yes > $null 2>&1
     Write-Host "Mapping $DriveLetter to $NetworkPath..."
-    net use $DriveLetter $NetworkPath /persistent:no | Out-Null
+    $mapResult = net use $DriveLetter $NetworkPath /persistent:no
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to map $DriveLetter to $NetworkPath. Output: $mapResult"
+    }
 
     # Apply WIM
     $WimPath = "M:\install.wim"
