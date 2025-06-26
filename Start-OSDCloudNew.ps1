@@ -87,14 +87,14 @@ try {
     Write-Host "Running bcdboot to make Windows bootable..."
     Start-Process -FilePath "bcdboot.exe" -ArgumentList "C:\Windows /s S: /f UEFI" -Wait -NoNewWindow
 
-    # Autopilot configuration - correct path
-    $AutopilotFolder = "C:\Windows\Provisioning\Autopilot"
+    # Autopilot configuration
+    $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     New-Item -ItemType Directory -Force -Path $AutopilotFolder | Out-Null
 
     $AutopilotConfig = @{
-        CloudAssignedTenantId     = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        CloudAssignedGroupTag     = $GroupTag
+        GroupTag                 = $GroupTag
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
@@ -107,6 +107,7 @@ try {
         EnableProvisioningDiagnostics = $true
         DeviceLicensingType           = "WindowsEnterprise"
         Language                      = "en-GB"
+        SkipZDP                       = $true
         RemovePreInstalledApps        = @(
             "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
             "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
@@ -176,7 +177,6 @@ exit /b 0
     Write-Host "SetupComplete.cmd created successfully."
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    # Uncomment next line to reboot automatically after deployment
     # Restart-Computer -Force
 }
 catch {
