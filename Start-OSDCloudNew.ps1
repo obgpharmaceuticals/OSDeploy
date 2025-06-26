@@ -78,7 +78,7 @@ try {
         throw "WIM file not found at $WimPath"
     }
     Write-Host "Applying Windows image from $WimPath to C:..."
-    $dism = Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image", "/ImageFile:$WimPath", "/Index:6", "/ApplyDir:C:\" -Wait -PassThru
+    $dism = Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image", "/ImageFile:$WimPath", "/Index:1", "/ApplyDir:C:\" -Wait -PassThru
     if ($dism.ExitCode -ne 0) {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
