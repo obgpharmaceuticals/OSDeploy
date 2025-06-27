@@ -21,35 +21,30 @@ try {
     }
     Write-Host "GroupTag set to: $GroupTag"
 
-    # Select and prepare disk
-    $Disk = Get-Disk | Where-Object {
-        $_.OperationalStatus -eq 'Online' -and
-        ($_.PartitionStyle -eq 'RAW' -or $_.PartitionStyle -eq 'GPT') -and
-        $_.Size -gt 30GB
-    } | Sort-Object Size -Descending | Select-Object -First 1
+    # Always use Disk 0
+    $DiskNumber = 0
 
-    if (-not $Disk) { throw "No suitable disk found." }
-    $DiskNumber = $Disk.Number
-    Write-Host "Selected disk $DiskNumber (Size: $([math]::Round($Disk.Size/1GB,2)) GB)"
+    # Clear Disk 0 including OEM partitions
+    Write-Host "Clearing disk $DiskNumber including OEM partitions..."
+    Clear-Disk -Number $DiskNumber -RemoveData -RemoveOEM -Confirm:$false
 
-    # Clean and initialize disk
-    Write-Host "Cleaning disk $DiskNumber..."
-    $Disk | Clear-Disk -RemoveData -Confirm:$false
-    Initialize-Disk -Number $DiskNumber -PartitionStyle GPT
+    # Initialize as GPT
+    Initialize-Disk -Number $DiskNumber -PartitionStyle GPT -Confirm:$false
 
-    # Create partitions
+    # Create EFI System Partition
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
-    $MSR = New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
-    $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
-
-    # Format volumes
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
-    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -NewDriveLetter S -ErrorAction SilentlyContinue
+    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -NewDriveLetter S
 
+    # Create MSR
+    New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
+
+    # Create Windows Partition
+    $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
     Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
-    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C -ErrorAction SilentlyContinue
+    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
 
-    Write-Host "Partitions created: EFI (S:), Windows (C:)"
+    Write-Host "Disk prepared successfully. EFI = S:, Windows = C:"
 
     # Wait for network connectivity
     Write-Host "Waiting for network connectivity..."
