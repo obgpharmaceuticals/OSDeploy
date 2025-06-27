@@ -95,7 +95,7 @@ try {
 
     # Setup boot files with /addfirst
     Write-Host "Running bcdboot to create UEFI boot entry with highest priority..."
-    Start-Process -FilePath "bcdboot.exe" -ArgumentList "C:\Windows /s S: /f UEFI /l en-GB /addfirst" -Wait -NoNewWindow
+    Start-Process -FilePath "bcdboot.exe" -ArgumentList "C:\Windows", "/s", "S:", "/f", "UEFI", "/l", "en-GB", "/addfirst" -Wait -NoNewWindow
 
     # Optional: Remove S: mapping
     Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESPPartition.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
@@ -133,20 +133,18 @@ try {
 
     # Unattend.xml
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
-    New-Item -ItemType Directory -Force -Path (Split-Path $UnattendPath) | Out-Null
-    @"
-<?xml version="1.0" encoding="utf-8"?>
-<unattend xmlns="urn:schemas-microsoft-com:unattend">
-  <settings pass="oobeSystem">
-    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    $UnattendXml = "<?xml version=`"1.0`" encoding=`"utf-8`"?>
+<unattend xmlns=`"urn:schemas-microsoft-com:unattend`">
+  <settings pass=`"oobeSystem`">
+    <component name=`"Microsoft-Windows-International-Core`" processorArchitecture=`"amd64`" publicKeyToken=`"31bf3856ad364e35`" language=`"neutral`" versionScope=`"nonSxS`" xmlns:wcm=`"http://schemas.microsoft.com/WMIConfig/2002/State`" xmlns:xsi=`"http://www.w3.org/2001/XMLSchema-instance`">
       <InputLocale>en-GB</InputLocale>
       <SystemLocale>en-GB</SystemLocale>
       <UILanguage>en-GB</UILanguage>
       <UserLocale>en-GB</UserLocale>
     </component>
   </settings>
-</unattend>
-"@ | Out-File -Encoding utf8 -FilePath $UnattendPath
+</unattend>"
+    Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
     # Download Get-WindowsAutoPilotInfo script
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
@@ -161,7 +159,6 @@ try {
 
     # SetupComplete.cmd
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
-    $escapedGroupTag = $GroupTag -replace "'", "''"
     $SetupCompleteContent = @"
 @echo off
 set LOGFILE=C:\Autopilot-Diag.txt
@@ -173,8 +170,7 @@ echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 timeout /t 10 > nul
 
 if exist "%SCRIPT%" (
-    powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ^
-    "`$retries = 3; `$success = `$false; for (`$i = 1; `$i -le `$retries; `$i++) { try { & '%SCRIPT%' -TenantId 'c95ebf8f-ebb1-45ad-8ef4-463fa94051ee' -AppId 'faa1bc75-81c7-4750-ac62-1e5ea3ac48c5' -AppSecret 'ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-' -GroupTag '$escapedGroupTag' -Online -Assign; `$success = `$true; break } catch { Add-Content -Path '%LOGFILE%' -Value ('Attempt {0} failed: {1}' -f `$i, `$_); Start-Sleep -Seconds 20 } }; if (-not `$success) { Add-Content -Path '%LOGFILE%' -Value 'All upload attempts failed.' }"
+    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
@@ -185,14 +181,12 @@ timeout /t 300 /nobreak > nul
 echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
 exit /b 0
 "@
-
-    New-Item -ItemType Directory -Path (Split-Path $SetupCompletePath) -Force | Out-Null
-    $SetupCompleteContent | Out-File -FilePath $SetupCompletePath -Encoding ASCII
+    Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
 
     Write-Host "SetupComplete.cmd created successfully."
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    Restart-Computer -Force
+    # Restart-Computer -Force
 }
 catch {
     Write-Error "Deployment failed: $_"
