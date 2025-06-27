@@ -21,7 +21,7 @@ try {
     }
     Write-Host "GroupTag set to: $GroupTag"
 
-    # Always use Disk 0
+    # Always wipe Disk 0
     $DiskNumber = 0
 
     # Clear Disk 0 including OEM partitions
@@ -35,21 +35,19 @@ try {
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    # Create EFI System Partition
-    $ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
-    Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
-    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -NewDriveLetter S
-    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -IsActive $true
+    # Create EFI System Partition (no drive letter needed)
+    New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}" | 
+        Format-Volume -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false | Out-Null
 
     # Create MSR partition
     New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
 
-    # Create Windows Partition
+    # Create Windows partition (C:)
     $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
     Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
 
-    Write-Host "Disk prepared successfully. EFI = S:, Windows = C:"
+    Write-Host "Disk prepared successfully. Windows partition is now C:."
 
     # Wait for network connectivity
     Write-Host "Waiting for network connectivity..."
@@ -67,9 +65,9 @@ try {
     $DriveLetter = "M:"
     net use $DriveLetter /delete /yes > $null 2>&1
     Write-Host "Mapping $DriveLetter to $NetworkPath..."
-    $mapResult = net use $DriveLetter $NetworkPath /persistent:no
+    $mapResult = net use $DriveLetter $NetworkPath /persistent:no 2>&1
     if ($LASTEXITCODE -ne 0) {
-        throw "Failed to map $DriveLetter to $NetworkPath. Output: $mapResult"
+        throw "Failed to map $DriveLetter to $NetworkPath. Error details: $mapResult"
     }
 
     # Apply WIM
@@ -83,9 +81,9 @@ try {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
 
-    # Setup boot files - updated for better UEFI/NVMe support
+    # Setup boot files
     Write-Host "Running bcdboot to make Windows bootable..."
-    Start-Process -FilePath "bcdboot.exe" -ArgumentList "C:\Windows /s S: /f UEFI /l en-GB" -Wait -NoNewWindow
+    Start-Process -FilePath "bcdboot.exe" -ArgumentList "C:\Windows /f UEFI /l en-GB" -Wait -NoNewWindow
 
     # Autopilot configuration
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
