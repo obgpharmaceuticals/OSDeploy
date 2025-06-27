@@ -35,7 +35,7 @@ try {
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    # Create EFI System Partition (no drive letter needed)
+    # Create EFI System Partition (no drive letter yet)
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
 
@@ -81,9 +81,26 @@ try {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
 
+    # Find EFI partition and mount it as S:
+    $ESPPartition = Get-Partition -DiskNumber $DiskNumber | Where-Object {
+        $_.GptType -eq "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
+    }
+
+    if ($ESPPartition) {
+        Write-Host "Assigning drive letter S: to EFI partition..."
+        Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESPPartition.PartitionNumber -NewDriveLetter "S"
+    } else {
+        throw "EFI partition not found!"
+    }
+
     # Setup boot files
     Write-Host "Running bcdboot to make Windows bootable..."
-    Start-Process -FilePath "bcdboot.exe" -ArgumentList "C:\Windows /f UEFI /l en-GB" -Wait -NoNewWindow
+    Start-Process -FilePath "bcdboot.exe" -ArgumentList "C:\Windows /s S: /f UEFI /l en-GB" -Wait -NoNewWindow
+
+    # Optional: Remove S: mapping
+    Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESPPartition.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
+
+    Write-Host "Boot files created successfully."
 
     # Autopilot configuration
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
@@ -175,7 +192,7 @@ exit /b 0
     Write-Host "SetupComplete.cmd created successfully."
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    # Restart-Computer -Force
+    Restart-Computer -Force
 }
 catch {
     Write-Error "Deployment failed: $_"
