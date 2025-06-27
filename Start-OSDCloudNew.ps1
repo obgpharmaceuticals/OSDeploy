@@ -50,7 +50,7 @@ try {
     Write-Host "Disk prepared successfully. Windows partition is now C:."
 
     # Wait for network connectivity
-    Write-Host "Waiting for network connectivity..."
+    Write-Host "Waiting for network connectivity to 10.1.192.20..."
     for ($i = 0; $i -lt 30; $i++) {
         if (Test-Connection -ComputerName 10.1.192.20 -Count 1 -Quiet) {
             Write-Host "Network is available."
@@ -70,7 +70,7 @@ try {
         throw "Failed to map $DriveLetter to $NetworkPath. Error details: $mapResult"
     }
 
-    # Apply WIM
+    # Apply WIM image index 1
     $WimPath = "M:\install.wim"
     if (-not (Test-Path $WimPath)) {
         throw "WIM file not found at $WimPath"
@@ -81,7 +81,7 @@ try {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
 
-    # Find EFI partition and mount it as S:
+    # Assign drive letter to EFI partition
     $ESPPartition = Get-Partition -DiskNumber $DiskNumber | Where-Object {
         $_.GptType -eq "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     }
@@ -93,45 +93,52 @@ try {
         throw "EFI partition not found!"
     }
 
-    # Setup boot files
-    Write-Host "Running bcdboot to make Windows bootable..."
-    Start-Process -FilePath "bcdboot.exe" -ArgumentList "C:\Windows /s S: /f UEFI /l en-GB" -Wait -NoNewWindow
+    # Run bcdboot with /addlast to force NVRAM entry
+    Write-Host "Running bcdboot to create UEFI boot entry..."
+    Start-Process -FilePath "bcdboot.exe" -ArgumentList "C:\Windows /s S: /f UEFI /l en-GB /addlast" -Wait -NoNewWindow
 
-    # Optional: Remove S: mapping
+    # Remove S: drive letter after boot files created
     Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESPPartition.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
 
     Write-Host "Boot files created successfully."
 
-    # Autopilot configuration
+    # Autopilot configuration folder
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     New-Item -ItemType Directory -Force -Path $AutopilotFolder | Out-Null
 
+    # Create AutopilotConfigurationFile.json
     $AutopilotConfig = @{
-        CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantId     = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        GroupTag                 = $GroupTag
+        GroupTag                  = $GroupTag
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
+    # Create OOBE.json
     $OOBEJson = @{
-        CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
-        CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
-        DeviceType                    = $GroupTag
-        EnableUserStatusTracking      = $true
-        EnableUserConfirmation        = $true
-        EnableProvisioningDiagnostics = $true
-        DeviceLicensingType           = "WindowsEnterprise"
-        Language                      = "en-GB"
-        SkipZDP                       = $true
-        RemovePreInstalledApps        = @(
-            "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
-            "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
-            "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder"
+        CloudAssignedTenantId          = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantDomain      = "obgpharma.onmicrosoft.com"
+        DeviceType                     = $GroupTag
+        EnableUserStatusTracking       = $true
+        EnableUserConfirmation         = $true
+        EnableProvisioningDiagnostics  = $true
+        DeviceLicensingType            = "WindowsEnterprise"
+        Language                       = "en-GB"
+        SkipZDP                        = $true
+        RemovePreInstalledApps         = @(
+            "Microsoft.ZuneMusic",
+            "Microsoft.XboxApp",
+            "Microsoft.XboxGameOverlay",
+            "Microsoft.XboxGamingOverlay",
+            "Microsoft.XboxSpeechToTextOverlay",
+            "Microsoft.YourPhone",
+            "Microsoft.Getstarted",
+            "Microsoft.3DBuilder"
         )
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
-    # Unattend.xml
+    # Create Unattend.xml for OOBE language settings
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     New-Item -ItemType Directory -Force -Path (Split-Path $UnattendPath) | Out-Null
     @"
@@ -148,7 +155,7 @@ try {
 </unattend>
 "@ | Out-File -Encoding utf8 -FilePath $UnattendPath
 
-    # Download Get-WindowsAutoPilotInfo script
+    # Download Get-WindowsAutoPilotInfo.ps1 script
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
     $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
     New-Item -ItemType Directory -Path "C:\Autopilot" -Force | Out-Null
@@ -159,7 +166,7 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # SetupComplete.cmd
+    # SetupComplete.cmd content
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $escapedGroupTag = $GroupTag -replace "'", "''"
     $SetupCompleteContent = @"
@@ -190,9 +197,13 @@ exit /b 0
     $SetupCompleteContent | Out-File -FilePath $SetupCompletePath -Encoding ASCII
 
     Write-Host "SetupComplete.cmd created successfully."
+
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
+
+    # Uncomment below to reboot automatically
     # Restart-Computer -Force
+
 }
 catch {
     Write-Error "Deployment failed: $_"
