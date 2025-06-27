@@ -31,12 +31,17 @@ try {
     # Initialize as GPT
     Initialize-Disk -Number $DiskNumber -PartitionStyle GPT -Confirm:$false
 
+    # Ensure disk is online and writable
+    Set-Disk -Number $DiskNumber -IsOffline $false
+    Set-Disk -Number $DiskNumber -IsReadOnly $false
+
     # Create EFI System Partition
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -NewDriveLetter S
+    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -IsActive $true
 
-    # Create MSR
+    # Create MSR partition
     New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
 
     # Create Windows Partition
@@ -78,9 +83,9 @@ try {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
 
-    # Setup boot files
+    # Setup boot files - updated for better UEFI/NVMe support
     Write-Host "Running bcdboot to make Windows bootable..."
-    Start-Process -FilePath "bcdboot.exe" -ArgumentList "C:\Windows /s S: /f UEFI" -Wait -NoNewWindow
+    Start-Process -FilePath "bcdboot.exe" -ArgumentList "C:\Windows /s S: /f UEFI /l en-GB" -Wait -NoNewWindow
 
     # Autopilot configuration
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
