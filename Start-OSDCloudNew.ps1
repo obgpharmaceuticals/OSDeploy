@@ -198,13 +198,25 @@ echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 timeout /t 10 > nul
 
 if exist "%SCRIPT%" (
-    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
+    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2D8hcB-" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
 
 echo Waiting 300 seconds (5 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
 timeout /t 300 /nobreak > nul
+
+echo ==== WINDOWS UPDATE FOR DRIVERS ==== >> %LOGFILE%
+echo Running Windows Update for drivers... >> %LOGFILE%
+
+powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ^
+    "Install-PackageProvider -Name NuGet -Force -Confirm:\$false; ^
+     Install-Module -Name PSWindowsUpdate -Force -Confirm:\$false; ^
+     Import-Module PSWindowsUpdate; ^
+     Add-WUServiceManager -MicrosoftUpdate -Confirm:\$false; ^
+     Get-WindowsUpdate -MicrosoftUpdate -Category Drivers -Install -AcceptAll -IgnoreReboot | Out-File -FilePath C:\Autopilot-Diag.txt -Append"
+
+echo Windows Update for drivers completed. >> %LOGFILE%
 
 echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
 exit /b 0
