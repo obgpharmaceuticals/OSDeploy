@@ -21,37 +21,42 @@ try {
     }
     Write-Host "GroupTag set to: $GroupTag"
 
-    # Always wipe Disk 0
     $DiskNumber = 0
 
     # Clear Disk 0 including OEM partitions
     Write-Host "Clearing disk $DiskNumber including OEM partitions..."
     Clear-Disk -Number $DiskNumber -RemoveData -RemoveOEM -Confirm:$false
 
-    # Initialize as GPT
+    # Initialize disk as GPT
     Initialize-Disk -Number $DiskNumber -PartitionStyle GPT -Confirm:$false
 
     # Ensure disk is online and writable
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    # Create EFI System Partition and mount as S:
-    $ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
-    Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
-    $ESP | Set-Partition -NewDriveLetter S
+    # Create EFI System Partition (100MB), assign no drive letter yet
+    $ESPPartition = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
+    Format-Volume -Partition $ESPPartition -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
 
-    # Create MSR partition
+    # Assign drive letter S: to EFI partition to prepare boot files
+    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESPPartition.PartitionNumber -NewDriveLetter S
+
+    # Create MSR partition (128MB)
     New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
 
-    # Create Windows partition (C:)
+    # Create Windows partition using remaining space
     $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
     Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
+
+    # Assign drive letter C: to Windows partition
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
 
-    Write-Host "Disk prepared successfully. Windows partition is now C:."
+    Write-Host "Disk partitions created and formatted:"
+    Write-Host "EFI partition: S:"
+    Write-Host "Windows partition: C:"
 
     # Wait for network connectivity
-    Write-Host "Waiting for network connectivity..."
+    Write-Host "Waiting for network connectivity to 10.1.192.20..."
     for ($i = 0; $i -lt 30; $i++) {
         if (Test-Connection -ComputerName 10.1.192.20 -Count 1 -Quiet) {
             Write-Host "Network is available."
@@ -71,7 +76,7 @@ try {
         throw "Failed to map $DriveLetter to $NetworkPath. Error details: $mapResult"
     }
 
-    # Apply WIM
+    # Apply WIM image to C:
     $WimPath = "M:\install.wim"
     if (-not (Test-Path $WimPath)) {
         throw "WIM file not found at $WimPath"
@@ -82,57 +87,56 @@ try {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
 
-    # Check if Windows boot files exist in deployed image
+    # Verify boot files presence in Windows image
     if (-not (Test-Path "C:\Windows\Boot\EFI\bootmgfw.efi")) {
-        Write-Warning "Boot files missing in C:\Windows\Boot\EFI. Trying to proceed anyway..."
+        Write-Warning "Boot files missing in C:\Windows\Boot\EFI. Proceeding anyway..."
     } else {
-        Write-Host "Boot files found in C:\Windows\Boot\EFI. Continuing..."
+        Write-Host "Boot files found in C:\Windows\Boot\EFI."
     }
 
-    # Create EFI folders if missing
-    if (-not (Test-Path "S:\EFI\Microsoft\Boot")) {
-        Write-Host "Creating EFI folder structure..."
-        New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null
+    # Ensure EFI boot folder structure on S:
+    $efiBootPath = "S:\EFI\Microsoft\Boot"
+    if (-not (Test-Path $efiBootPath)) {
+        Write-Host "Creating EFI folder structure at $efiBootPath..."
+        New-Item -Path $efiBootPath -ItemType Directory -Force | Out-Null
     }
 
-    # Run bcdboot
-    Write-Host "Running bcdboot to create UEFI boot entry..."
-    $bcdResult = bcdboot C:\Windows /s S: /f UEFI
-    Write-Host $bcdResult
+    # Run bcdboot to create UEFI boot files on EFI partition
+    Write-Host "Running bcdboot to create UEFI boot files..."
+    $bcdbootResult = bcdboot C:\Windows /s S: /f UEFI
+    Write-Host $bcdbootResult
 
-    # Verify boot files exist
-    if (-not (Test-Path "S:\EFI\Microsoft\Boot\bootmgfw.efi")) {
-        throw "bcdboot failed to write boot files. Disk will not boot."
+    # Confirm boot files were created
+    if (-not (Test-Path "$efiBootPath\bootmgfw.efi")) {
+        throw "bcdboot failed to create boot files. System may not boot."
     } else {
-        Write-Host "Boot files successfully copied to EFI partition."
+        Write-Host "Boot files successfully created on EFI partition."
     }
 
-    # Optional: Remove S: mapping
-    Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
+    # Optional: remove S: drive letter (commented out if you want to keep it)
+    # Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESPPartition.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
 
-    Write-Host "Boot files created successfully."
-
-    # Ensure required folders exist
-    $TargetFolders = @(
+    # Create required folder structure for Autopilot and unattend files
+    $requiredFolders = @(
         "C:\Windows\Panther\Unattend",
         "C:\Windows\Setup\Scripts",
         "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     )
-
-    foreach ($Folder in $TargetFolders) {
-        if (-not (Test-Path $Folder)) {
-            New-Item -Path $Folder -ItemType Directory -Force | Out-Null
+    foreach ($folder in $requiredFolders) {
+        if (-not (Test-Path $folder)) {
+            Write-Host "Creating folder: $folder"
+            New-Item -Path $folder -ItemType Directory -Force | Out-Null
         }
     }
 
     # Autopilot configuration
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     $AutopilotConfig = @{
-        CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantId     = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        GroupTag                 = $GroupTag
+        GroupTag                  = $GroupTag
     }
-    $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
+    $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding UTF8
 
     $OOBEJson = @{
         CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
@@ -150,24 +154,26 @@ try {
             "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder"
         )
     }
-    $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
+    $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding UTF8
 
-    # Write unattend.xml
-    $UnattendXml = "<?xml version=`"1.0`" encoding=`"utf-8`"?>
-<unattend xmlns=`"urn:schemas-microsoft-com:unattend`">
-  <settings pass=`"oobeSystem`">
-    <component name=`"Microsoft-Windows-International-Core`" processorArchitecture=`"amd64`" publicKeyToken=`"31bf3856ad364e35`" language=`"neutral`" versionScope=`"nonSxS`" xmlns:wcm=`"http://schemas.microsoft.com/WMIConfig/2002/State`" xmlns:xsi=`"http://www.w3.org/2001/XMLSchema-instance`">
+    # Write unattend.xml with UK locale settings
+    $UnattendXml = @"
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
       <InputLocale>en-GB</InputLocale>
       <SystemLocale>en-GB</SystemLocale>
       <UILanguage>en-GB</UILanguage>
       <UserLocale>en-GB</UserLocale>
     </component>
   </settings>
-</unattend>"
+</unattend>
+"@
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
-    # Download Get-WindowsAutoPilotInfo script
+    # Download Get-WindowsAutoPilotInfo.ps1 script
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
     $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
     New-Item -ItemType Directory -Path "C:\Autopilot" -Force | Out-Null
@@ -178,7 +184,7 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # Write SetupComplete.cmd
+    # Write SetupComplete.cmd to run Autopilot hardware hash upload
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
 @echo off
@@ -205,9 +211,10 @@ exit /b 0
     Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
 
     Write-Host "SetupComplete.cmd created successfully."
+
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    # Restart-Computer -Force
+    Restart-Computer -Force
 }
 catch {
     Write-Error "Deployment failed: $_"
