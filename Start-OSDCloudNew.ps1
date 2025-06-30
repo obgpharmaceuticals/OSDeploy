@@ -1,4 +1,4 @@
-# Start transcript logging
+# Start transcript logging 
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
@@ -35,23 +35,11 @@ try {
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    # --- FIX: Properly create EFI partition and assign S: ---
-
-    # Create EFI partition
-    New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}" | Out-Null
-
-    # Locate the EFI partition
-    $ESPPartition = Get-Partition -DiskNumber $DiskNumber | Where-Object {
-        $_.GptType -eq "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
-    }
-
-    if ($ESPPartition) {
-        Format-Volume -Partition $ESPPartition -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
-        Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESPPartition.PartitionNumber -NewDriveLetter S
-        Write-Host "Assigned drive letter S: to EFI partition."
-    } else {
-        throw "EFI partition could not be found after creation."
-    }
+    # Create EFI System Partition (now 260MB instead of 100MB)
+    $ESP = New-Partition -DiskNumber $DiskNumber -Size 260MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
+    Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
+    $ESP | Set-Partition -NewDriveLetter S
+    Write-Host "EFI partition assigned to drive letter: S"
 
     # Create MSR partition
     New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
@@ -113,17 +101,23 @@ try {
     $bcdResult = bcdboot C:\Windows /s S: /f UEFI
     Write-Host $bcdResult
 
-    # Verify boot files exist
+    # Check boot files exist
     if (-not (Test-Path "S:\EFI\Microsoft\Boot\bootmgfw.efi")) {
         throw "bcdboot failed to write boot files. Disk will not boot."
     } else {
         Write-Host "Boot files successfully copied to EFI partition."
     }
 
-    # Optional: Remove S: mapping
-    Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESPPartition.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
+    # Also copy bootx64.efi to generic EFI folder (helps with some firmware)
+    if (-not (Test-Path "S:\EFI\Boot")) {
+        New-Item -Path "S:\EFI\Boot" -ItemType Directory -Force | Out-Null
+    }
+    Copy-Item -Path "S:\EFI\Microsoft\Boot\bootmgfw.efi" -Destination "S:\EFI\Boot\bootx64.efi" -Force
 
     Write-Host "Boot files created successfully."
+
+    # Optional - do not remove S: if you want to inspect later
+    # Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
 
     # Ensure required folders exist
     $TargetFolders = @(
