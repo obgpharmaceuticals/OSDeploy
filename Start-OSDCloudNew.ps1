@@ -82,9 +82,16 @@ try {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
 
+    # Check if Windows boot files exist in deployed image
+    if (-not (Test-Path "C:\Windows\Boot\EFI\bootmgfw.efi")) {
+        Write-Warning "Boot files missing in C:\Windows\Boot\EFI. Trying to proceed anyway..."
+    } else {
+        Write-Host "Boot files found in C:\Windows\Boot\EFI. Continuing..."
+    }
+
     # Run bcdboot using mounted S:
     Write-Host "Running bcdboot to create UEFI boot entry..."
-    Start-Process -FilePath "bcdboot.exe" -ArgumentList "C:\Windows", "/s", "S:", "/f", "UEFI", "/l", "en-GB", "/addfirst" -Wait -NoNewWindow
+    Start-Process -FilePath "bcdboot.exe" -ArgumentList "C:\Windows", "/s", "S:", "/f", "ALL", "/l", "en-GB", "/addfirst", "/nv" -Wait -NoNewWindow
 
     # Verify boot files exist
     if (-not (Test-Path "S:\EFI\Microsoft\Boot\bootmgfw.efi")) {
