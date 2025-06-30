@@ -23,36 +23,52 @@ try {
 
     $DiskNumber = 0
 
-    # Clear Disk 0 including OEM partitions
     Write-Host "Clearing disk $DiskNumber including OEM partitions..."
     Clear-Disk -Number $DiskNumber -RemoveData -RemoveOEM -Confirm:$false
 
-    # Initialize disk as GPT
+    Write-Host "Initializing disk $DiskNumber as GPT..."
     Initialize-Disk -Number $DiskNumber -PartitionStyle GPT -Confirm:$false
 
-    # Ensure disk is online and writable
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    # Create EFI System Partition (100MB), assign no drive letter yet
+    # Create EFI partition (100MB)
     $ESPPartition = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
+    Write-Host "Formatting EFI partition as FAT32..."
     Format-Volume -Partition $ESPPartition -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
 
-    # Assign drive letter S: to EFI partition to prepare boot files
-    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESPPartition.PartitionNumber -NewDriveLetter S
+    # Function to get free drive letter
+    function Get-FreeDriveLetter {
+        $used = (Get-PSDrive -PSProvider FileSystem).Name
+        $letters = [char[]](67..90) # C-Z
+        foreach ($letter in $letters) {
+            if ($used -notcontains $letter) { return $letter }
+        }
+        throw "No free drive letters available"
+    }
+
+    $desiredLetter = 'S'
+    $existingDrives = (Get-PSDrive -PSProvider FileSystem).Name
+    if ($existingDrives -contains $desiredLetter) {
+        $efiDriveLetter = Get-FreeDriveLetter
+        Write-Warning "Drive letter S: is in use, assigning EFI partition to $efiDriveLetter:"
+    } else {
+        $efiDriveLetter = $desiredLetter
+        Write-Host "Assigning EFI partition to drive letter S:"
+    }
+
+    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESPPartition.PartitionNumber -NewDriveLetter $efiDriveLetter
 
     # Create MSR partition (128MB)
     New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
 
-    # Create Windows partition using remaining space
+    # Create Windows partition (rest of disk)
     $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
     Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
-
-    # Assign drive letter C: to Windows partition
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
 
-    Write-Host "Disk partitions created and formatted:"
-    Write-Host "EFI partition: S:"
+    Write-Host "Disk partitions created:"
+    Write-Host "EFI partition: $efiDriveLetter`:"
     Write-Host "Windows partition: C:"
 
     # Wait for network connectivity
@@ -94,29 +110,25 @@ try {
         Write-Host "Boot files found in C:\Windows\Boot\EFI."
     }
 
-    # Ensure EFI boot folder structure on S:
-    $efiBootPath = "S:\EFI\Microsoft\Boot"
+    # Ensure EFI boot folder structure
+    $efiBootPath = "$efiDriveLetter`:\EFI\Microsoft\Boot"
     if (-not (Test-Path $efiBootPath)) {
-        Write-Host "Creating EFI folder structure at $efiBootPath..."
+        Write-Host "Creating EFI boot folder structure at $efiBootPath..."
         New-Item -Path $efiBootPath -ItemType Directory -Force | Out-Null
     }
 
-    # Run bcdboot to create UEFI boot files on EFI partition
-    Write-Host "Running bcdboot to create UEFI boot files..."
-    $bcdbootResult = bcdboot C:\Windows /s S: /f UEFI
+    # Run bcdboot to create UEFI boot files
+    Write-Host "Running bcdboot to create boot files..."
+    $bcdbootResult = bcdboot C:\Windows /s $efiDriveLetter`: /f UEFI
     Write-Host $bcdbootResult
 
-    # Confirm boot files were created
     if (-not (Test-Path "$efiBootPath\bootmgfw.efi")) {
-        throw "bcdboot failed to create boot files. System may not boot."
+        throw "bcdboot failed to create boot files at $efiBootPath. System may not boot."
     } else {
         Write-Host "Boot files successfully created on EFI partition."
     }
 
-    # Optional: remove S: drive letter (commented out if you want to keep it)
-    # Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESPPartition.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
-
-    # Create required folder structure for Autopilot and unattend files
+    # Create required folders for Autopilot and unattend
     $requiredFolders = @(
         "C:\Windows\Panther\Unattend",
         "C:\Windows\Setup\Scripts",
@@ -129,7 +141,7 @@ try {
         }
     }
 
-    # Autopilot configuration
+    # Autopilot configuration JSON
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     $AutopilotConfig = @{
         CloudAssignedTenantId     = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
@@ -156,7 +168,7 @@ try {
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding UTF8
 
-    # Write unattend.xml with UK locale settings
+    # Write unattend.xml
     $UnattendXml = @"
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
@@ -184,7 +196,7 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # Write SetupComplete.cmd to run Autopilot hardware hash upload
+    # Write SetupComplete.cmd for hardware hash upload
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
 @echo off
@@ -212,9 +224,9 @@ exit /b 0
 
     Write-Host "SetupComplete.cmd created successfully."
 
-    Write-Host "Deployment script completed. Rebooting in 5 seconds..."
-    Start-Sleep -Seconds 5
-    # Restart-Computer -Force
+    Write-Host "Deployment script completed. Please reboot manually to test."
+    # Restart-Computer -Force  # <-- commented out for troubleshooting
+
 }
 catch {
     Write-Error "Deployment failed: $_"
