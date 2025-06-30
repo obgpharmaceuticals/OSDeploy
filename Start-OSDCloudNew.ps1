@@ -89,15 +89,22 @@ try {
         Write-Host "Boot files found in C:\Windows\Boot\EFI. Continuing..."
     }
 
-    # Run bcdboot using mounted S:
+    # Create EFI folders if missing
+    if (-not (Test-Path "S:\EFI\Microsoft\Boot")) {
+        Write-Host "Creating EFI folder structure..."
+        New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null
+    }
+
+    # Run bcdboot
     Write-Host "Running bcdboot to create UEFI boot entry..."
-    Start-Process -FilePath "bcdboot.exe" -ArgumentList "C:\Windows", "/s", "S:", "/f", "ALL", "/l", "en-GB", "/addfirst", "/nv" -Wait -NoNewWindow
+    $bcdResult = bcdboot C:\Windows /s S: /f UEFI
+    Write-Host $bcdResult
 
     # Verify boot files exist
     if (-not (Test-Path "S:\EFI\Microsoft\Boot\bootmgfw.efi")) {
-        throw "Boot files missing from EFI partition. Disk will not boot."
+        throw "bcdboot failed to write boot files. Disk will not boot."
     } else {
-        Write-Host "Boot files verified in EFI partition."
+        Write-Host "Boot files successfully copied to EFI partition."
     }
 
     # Optional: Remove S: mapping
