@@ -35,9 +35,10 @@ try {
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    # Create EFI System Partition (no drive letter yet)
+    # Create EFI System Partition and mount as S:
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
+    Set-Partition -Partition $ESP -NewDriveLetter S
 
     # Create MSR partition
     New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
@@ -81,31 +82,37 @@ try {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
 
-    # Find EFI partition and mount it as S:
-    $ESPPartition = Get-Partition -DiskNumber $DiskNumber | Where-Object {
-        $_.GptType -eq "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
-    }
-
-    if ($ESPPartition) {
-        Write-Host "Assigning drive letter S: to EFI partition..."
-        Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESPPartition.PartitionNumber -NewDriveLetter "S"
-    } else {
-        throw "EFI partition not found!"
-    }
-
-    # Setup boot files with /addfirst
-    Write-Host "Running bcdboot to create UEFI boot entry with highest priority..."
+    # Run bcdboot using mounted S:
+    Write-Host "Running bcdboot to create UEFI boot entry..."
     Start-Process -FilePath "bcdboot.exe" -ArgumentList "C:\Windows", "/s", "S:", "/f", "UEFI", "/l", "en-GB", "/addfirst" -Wait -NoNewWindow
 
+    # Verify boot files exist
+    if (-not (Test-Path "S:\EFI\Microsoft\Boot\bootmgfw.efi")) {
+        throw "Boot files missing from EFI partition. Disk will not boot."
+    } else {
+        Write-Host "Boot files verified in EFI partition."
+    }
+
     # Optional: Remove S: mapping
-    Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESPPartition.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
+    Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
 
     Write-Host "Boot files created successfully."
 
+    # Ensure required folders exist
+    $TargetFolders = @(
+        "C:\Windows\Panther\Unattend",
+        "C:\Windows\Setup\Scripts",
+        "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
+    )
+
+    foreach ($Folder in $TargetFolders) {
+        if (-not (Test-Path $Folder)) {
+            New-Item -Path $Folder -ItemType Directory -Force | Out-Null
+        }
+    }
+
     # Autopilot configuration
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
-    New-Item -ItemType Directory -Force -Path $AutopilotFolder | Out-Null
-
     $AutopilotConfig = @{
         CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
@@ -131,8 +138,7 @@ try {
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
-    # Unattend.xml
-    $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
+    # Write unattend.xml
     $UnattendXml = "<?xml version=`"1.0`" encoding=`"utf-8`"?>
 <unattend xmlns=`"urn:schemas-microsoft-com:unattend`">
   <settings pass=`"oobeSystem`">
@@ -144,6 +150,7 @@ try {
     </component>
   </settings>
 </unattend>"
+    $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
     # Download Get-WindowsAutoPilotInfo script
@@ -157,7 +164,7 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # SetupComplete.cmd
+    # Write SetupComplete.cmd
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
 @echo off
@@ -186,7 +193,7 @@ exit /b 0
     Write-Host "SetupComplete.cmd created successfully."
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    # Restart-Computer -Force
+    Restart-Computer -Force
 }
 catch {
     Write-Error "Deployment failed: $_"
