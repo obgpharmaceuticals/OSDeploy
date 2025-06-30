@@ -1,4 +1,4 @@
-# Start transcript logging
+# Start transcript logging 
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
@@ -24,12 +24,14 @@ try {
     # Always wipe Disk 0
     $DiskNumber = 0
 
+    # Clear Disk 0 including OEM partitions
     Write-Host "Clearing disk $DiskNumber including OEM partitions..."
     Clear-Disk -Number $DiskNumber -RemoveData -RemoveOEM -Confirm:$false
 
-    Write-Host "Initializing disk $DiskNumber as GPT..."
+    # Initialize as GPT
     Initialize-Disk -Number $DiskNumber -PartitionStyle GPT -Confirm:$false
 
+    # Ensure disk is online and writable
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
@@ -37,17 +39,11 @@ try {
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
 
-    # Assign drive letter to EFI partition
-    # Ensure S: is available
-    $existing = (Get-PSDrive -PSProvider FileSystem).Name
-    if ($existing -contains "S") {
-        $free = ([char[]](67..90) | Where-Object { $_ -notin $existing })[0]
-        Write-Host "Drive S: is in use. Assigning EFI partition to $free:"
-        $EFIletter = $free
-    } else {
-        $EFIletter = "S"
-    }
-    $ESP | Set-Partition -NewDriveLetter $EFIletter
+    # Assign drive letter safely to EFI partition
+    $available = ([char[]](67..90)) | Where-Object { -not (Get-PSDrive -Name $_ -ErrorAction SilentlyContinue) }
+    $efiLetter = $available[0]
+    $ESP | Set-Partition -NewDriveLetter $efiLetter
+    Write-Host "EFI partition assigned to drive letter: $efiLetter"
 
     # Create MSR partition
     New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
@@ -91,27 +87,33 @@ try {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
 
+    # Check if Windows boot files exist in deployed image
+    if (-not (Test-Path "C:\Windows\Boot\EFI\bootmgfw.efi")) {
+        Write-Warning "Boot files missing in C:\Windows\Boot\EFI. Trying to proceed anyway..."
+    } else {
+        Write-Host "Boot files found in C:\Windows\Boot\EFI. Continuing..."
+    }
+
     # Create EFI folders if missing
-    $EFIBootPath = "$EFIletter`:\EFI\Microsoft\Boot"
-    if (-not (Test-Path $EFIBootPath)) {
+    if (-not (Test-Path "$efiLetter`:\EFI\Microsoft\Boot")) {
         Write-Host "Creating EFI folder structure..."
-        New-Item -Path $EFIBootPath -ItemType Directory -Force | Out-Null
+        New-Item -Path "$efiLetter`:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null
     }
 
     # Run bcdboot
     Write-Host "Running bcdboot to create UEFI boot entry..."
-    $bcdResult = bcdboot C:\Windows /s "$EFIletter`:" /f UEFI
+    $bcdResult = bcdboot C:\Windows /s "$efiLetter`:" /f UEFI
     Write-Host $bcdResult
 
     # Verify boot files exist
-    if (-not (Test-Path "$EFIBootPath\bootmgfw.efi")) {
+    if (-not (Test-Path "$efiLetter`:\EFI\Microsoft\Boot\bootmgfw.efi")) {
         throw "bcdboot failed to write boot files. Disk will not boot."
     } else {
         Write-Host "Boot files successfully copied to EFI partition."
     }
 
-    # Remove drive letter mapping
-    Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -AccessPath "$EFIletter`:\" -ErrorAction SilentlyContinue
+    # Optional: Remove EFI drive mapping
+    Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -AccessPath "$efiLetter`:\" -ErrorAction SilentlyContinue
 
     Write-Host "Boot files created successfully."
 
@@ -121,6 +123,7 @@ try {
         "C:\Windows\Setup\Scripts",
         "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     )
+
     foreach ($Folder in $TargetFolders) {
         if (-not (Test-Path $Folder)) {
             New-Item -Path $Folder -ItemType Directory -Force | Out-Null
@@ -155,19 +158,17 @@ try {
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
     # Write unattend.xml
-    $UnattendXml = @"
-<?xml version="1.0" encoding="utf-8"?>
-<unattend xmlns="urn:schemas-microsoft-com:unattend">
-  <settings pass="oobeSystem">
-    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    $UnattendXml = "<?xml version=`"1.0`" encoding=`"utf-8`"?>
+<unattend xmlns=`"urn:schemas-microsoft-com:unattend`">
+  <settings pass=`"oobeSystem`">
+    <component name=`"Microsoft-Windows-International-Core`" processorArchitecture=`"amd64`" publicKeyToken=`"31bf3856ad364e35`" language=`"neutral`" versionScope=`"nonSxS`" xmlns:wcm=`"http://schemas.microsoft.com/WMIConfig/2002/State`" xmlns:xsi=`"http://www.w3.org/2001/XMLSchema-instance`">
       <InputLocale>en-GB</InputLocale>
       <SystemLocale>en-GB</SystemLocale>
       <UILanguage>en-GB</UILanguage>
       <UserLocale>en-GB</UserLocale>
     </component>
   </settings>
-</unattend>
-"@
+</unattend>"
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
