@@ -1,4 +1,4 @@
-# Start transcript logging 
+# Start transcript logging
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
@@ -35,25 +35,33 @@ try {
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    # Create Windows partition (C:) first
+    # --- FIX: Properly create EFI partition and assign S: ---
+
+    # Create EFI partition
+    New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}" | Out-Null
+
+    # Locate the EFI partition
+    $ESPPartition = Get-Partition -DiskNumber $DiskNumber | Where-Object {
+        $_.GptType -eq "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
+    }
+
+    if ($ESPPartition) {
+        Format-Volume -Partition $ESPPartition -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
+        Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESPPartition.PartitionNumber -NewDriveLetter S
+        Write-Host "Assigned drive letter S: to EFI partition."
+    } else {
+        throw "EFI partition could not be found after creation."
+    }
+
+    # Create MSR partition
+    New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
+
+    # Create Windows partition (C:)
     $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
     Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
 
-    # Shrink C: by 500MB to leave space for EFI and MSR
-    $CurrentSize = (Get-Partition -DriveLetter C).Size
-    $NewSize = $CurrentSize - 500MB
-    Resize-Partition -DriveLetter C -Size $NewSize
-
-    # Create EFI System Partition (S:)
-    $ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
-    Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
-    $ESP | Set-Partition -NewDriveLetter S
-
-    # Create MSR partition (128MB)
-    New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
-
-    Write-Host "Disk prepared successfully. Windows partition is now C:, EFI is S:."
+    Write-Host "Disk prepared successfully. Windows partition is now C:."
 
     # Wait for network connectivity
     Write-Host "Waiting for network connectivity..."
@@ -113,7 +121,7 @@ try {
     }
 
     # Optional: Remove S: mapping
-    Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
+    Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESPPartition.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
 
     Write-Host "Boot files created successfully."
 
@@ -158,19 +166,17 @@ try {
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
     # Write unattend.xml
-    $UnattendXml = @"
-<?xml version="1.0" encoding="utf-8"?>
-<unattend xmlns="urn:schemas-microsoft-com:unattend">
-  <settings pass="oobeSystem">
-    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    $UnattendXml = "<?xml version=`"1.0`" encoding=`"utf-8`"?>
+<unattend xmlns=`"urn:schemas-microsoft-com:unattend`">
+  <settings pass=`"oobeSystem`">
+    <component name=`"Microsoft-Windows-International-Core`" processorArchitecture=`"amd64`" publicKeyToken=`"31bf3856ad364e35`" language=`"neutral`" versionScope=`"nonSxS`" xmlns:wcm=`"http://schemas.microsoft.com/WMIConfig/2002/State`" xmlns:xsi=`"http://www.w3.org/2001/XMLSchema-instance`">
       <InputLocale>en-GB</InputLocale>
       <SystemLocale>en-GB</SystemLocale>
       <UILanguage>en-GB</UILanguage>
       <UserLocale>en-GB</UserLocale>
     </component>
   </settings>
-</unattend>
-"@
+</unattend>"
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
@@ -215,6 +221,7 @@ exit /b 0
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     # Restart-Computer -Force
+
 }
 catch {
     Write-Error "Deployment failed: $_"
