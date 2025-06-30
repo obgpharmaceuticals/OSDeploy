@@ -38,7 +38,7 @@ try {
     # Create EFI System Partition and mount as S:
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
-    Set-Partition -Partition $ESP -NewDriveLetter S
+    $ESP | Set-Partition -NewDriveLetter S
 
     # Create MSR partition
     New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
