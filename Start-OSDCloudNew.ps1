@@ -1,10 +1,14 @@
-# Start transcript logging
-Start-Transcript -Path "X:\DeployScript.log" -Append
+$LogFile = "X:\DeployScript.log"
+function LogWrite($message) {
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    "$timestamp - $message" | Out-File -FilePath $LogFile -Append -Encoding utf8
+}
 
 try {
-    Write-Host "Starting Windows 11 deployment..." -ForegroundColor Cyan
+    LogWrite "Starting Windows 11 deployment..."
 
     # Prompt for system type
+    LogWrite "Prompting for system type."
     Write-Host "Select system type:"
     Write-Host "1. Productivity Desktop"
     Write-Host "2. Productivity Laptop"
@@ -15,18 +19,18 @@ try {
         '2' { $GroupTag = "ProductivityLaptop" }
         '3' { $GroupTag = "LineOfBusinessDesktop" }
         default {
-            Write-Warning "Invalid choice. Defaulting to ProductivityDesktop"
+            LogWrite "Invalid choice entered: $selection. Defaulting to ProductivityDesktop."
             $GroupTag = "ProductivityDesktop"
         }
     }
-    Write-Host "GroupTag set to: $GroupTag"
+    LogWrite "GroupTag set to: $GroupTag"
 
     $DiskNumber = 0
 
-    Write-Host "Clearing disk $DiskNumber including OEM partitions..."
+    LogWrite "Clearing disk $DiskNumber including OEM partitions..."
     Clear-Disk -Number $DiskNumber -RemoveData -RemoveOEM -Confirm:$false
 
-    Write-Host "Initializing disk $DiskNumber as GPT..."
+    LogWrite "Initializing disk $DiskNumber as GPT..."
     Initialize-Disk -Number $DiskNumber -PartitionStyle GPT -Confirm:$false
 
     Set-Disk -Number $DiskNumber -IsOffline $false
@@ -34,7 +38,7 @@ try {
 
     # Create EFI partition (100MB)
     $ESPPartition = New-Partition -DiskNumber $DiskNumber -Size 100MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
-    Write-Host "Formatting EFI partition as FAT32..."
+    LogWrite "Formatting EFI partition as FAT32..."
     Format-Volume -Partition $ESPPartition -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
 
     # Function to get free drive letter
@@ -51,10 +55,10 @@ try {
     $existingDrives = (Get-PSDrive -PSProvider FileSystem).Name
     if ($existingDrives -contains $desiredLetter) {
         $efiDriveLetter = Get-FreeDriveLetter
-        Write-Warning "Drive letter S: is in use, assigning EFI partition to $efiDriveLetter:"
+        LogWrite "Drive letter S: is in use, assigning EFI partition to $efiDriveLetter:"
     } else {
         $efiDriveLetter = $desiredLetter
-        Write-Host "Assigning EFI partition to drive letter S:"
+        LogWrite "Assigning EFI partition to drive letter S:"
     }
 
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $ESPPartition.PartitionNumber -NewDriveLetter $efiDriveLetter
@@ -67,65 +71,57 @@ try {
     Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
 
-    Write-Host "Disk partitions created:"
-    Write-Host "EFI partition: $efiDriveLetter`:"
-    Write-Host "Windows partition: C:"
+    LogWrite "Disk partitions created: EFI partition $efiDriveLetter`: and Windows partition C:"
 
-    # Wait for network connectivity
-    Write-Host "Waiting for network connectivity to 10.1.192.20..."
-    for ($i = 0; $i -lt 30; $i++) {
+    # Network connectivity wait
+    LogWrite "Waiting for network connectivity to 10.1.192.20..."
+    for ($i=0; $i -lt 30; $i++) {
         if (Test-Connection -ComputerName 10.1.192.20 -Count 1 -Quiet) {
-            Write-Host "Network is available."
+            LogWrite "Network is available."
             break
         }
         Start-Sleep -Seconds 2
-        if ($i -eq 29) { throw "Network not available after timeout." }
+        if ($i -eq 29) {
+            throw "Network not available after timeout."
+        }
     }
 
     # Map network share as M:
     $NetworkPath = "\\10.1.192.20\ReadOnlyShare"
     $DriveLetter = "M:"
     net use $DriveLetter /delete /yes > $null 2>&1
-    Write-Host "Mapping $DriveLetter to $NetworkPath..."
+    LogWrite "Mapping $DriveLetter to $NetworkPath..."
     $mapResult = net use $DriveLetter $NetworkPath /persistent:no 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to map $DriveLetter to $NetworkPath. Error details: $mapResult"
     }
 
-    # Apply WIM image to C:
+    # Apply WIM image
     $WimPath = "M:\install.wim"
     if (-not (Test-Path $WimPath)) {
         throw "WIM file not found at $WimPath"
     }
-    Write-Host "Applying Windows image from $WimPath to C:..."
+    LogWrite "Applying Windows image from $WimPath to C:..."
     $dism = Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image", "/ImageFile:$WimPath", "/Index:1", "/ApplyDir:C:\" -Wait -PassThru
     if ($dism.ExitCode -ne 0) {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
 
-    # Verify boot files presence in Windows image
-    if (-not (Test-Path "C:\Windows\Boot\EFI\bootmgfw.efi")) {
-        Write-Warning "Boot files missing in C:\Windows\Boot\EFI. Proceeding anyway..."
-    } else {
-        Write-Host "Boot files found in C:\Windows\Boot\EFI."
-    }
-
-    # Ensure EFI boot folder structure
+    # Boot files check and bcdboot
     $efiBootPath = "$efiDriveLetter`:\EFI\Microsoft\Boot"
     if (-not (Test-Path $efiBootPath)) {
-        Write-Host "Creating EFI boot folder structure at $efiBootPath..."
+        LogWrite "Creating EFI boot folder structure at $efiBootPath..."
         New-Item -Path $efiBootPath -ItemType Directory -Force | Out-Null
     }
 
-    # Run bcdboot to create UEFI boot files
-    Write-Host "Running bcdboot to create boot files..."
+    LogWrite "Running bcdboot to create boot files..."
     $bcdbootResult = bcdboot C:\Windows /s $efiDriveLetter`: /f UEFI
-    Write-Host $bcdbootResult
+    LogWrite $bcdbootResult
 
     if (-not (Test-Path "$efiBootPath\bootmgfw.efi")) {
         throw "bcdboot failed to create boot files at $efiBootPath. System may not boot."
     } else {
-        Write-Host "Boot files successfully created on EFI partition."
+        LogWrite "Boot files successfully created on EFI partition."
     }
 
     # Create required folders for Autopilot and unattend
@@ -136,12 +132,12 @@ try {
     )
     foreach ($folder in $requiredFolders) {
         if (-not (Test-Path $folder)) {
-            Write-Host "Creating folder: $folder"
+            LogWrite "Creating folder: $folder"
             New-Item -Path $folder -ItemType Directory -Force | Out-Null
         }
     }
 
-    # Autopilot configuration JSON
+    # Autopilot JSON creation
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     $AutopilotConfig = @{
         CloudAssignedTenantId     = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
@@ -185,18 +181,18 @@ try {
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
-    # Download Get-WindowsAutoPilotInfo.ps1 script
+    # Download Get-WindowsAutoPilotInfo.ps1
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
     $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
     New-Item -ItemType Directory -Path "C:\Autopilot" -Force | Out-Null
     try {
         Invoke-WebRequest -Uri $AutoPilotScriptURL -OutFile $AutoPilotScriptPath -UseBasicParsing -ErrorAction Stop
-        Write-Host "Downloaded Get-WindowsAutoPilotInfo.ps1 successfully."
+        LogWrite "Downloaded Get-WindowsAutoPilotInfo.ps1 successfully."
     } catch {
-        Write-Warning "Failed to download Autopilot script: $_"
+        LogWrite "Failed to download Autopilot script: $_"
     }
 
-    # Write SetupComplete.cmd for hardware hash upload
+    # Write SetupComplete.cmd
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
 @echo off
@@ -222,15 +218,11 @@ exit /b 0
 "@
     Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
 
-    Write-Host "SetupComplete.cmd created successfully."
+    LogWrite "SetupComplete.cmd created successfully."
 
-    Write-Host "Deployment script completed. Please reboot manually to test."
+    LogWrite "Deployment script completed. Please reboot manually to test."
     # Restart-Computer -Force  # <-- commented out for troubleshooting
 
-}
-catch {
-    Write-Error "Deployment failed: $_"
-}
-finally {
-    try { Stop-Transcript } catch {}
+} catch {
+    LogWrite "Deployment failed: $_"
 }
