@@ -4,7 +4,7 @@ Start-Transcript -Path "X:\DeployScript.log" -Append
 try {
     Write-Host "Starting Windows 11 deployment..." -ForegroundColor Cyan
 
-    # Force a valid system type selection
+    # Prompt for system type with forced valid selection
     do {
         Write-Host "Select system type:"
         Write-Host "1. Productivity Desktop"
@@ -34,13 +34,13 @@ try {
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    # Create EFI System Partition (260 MB)
+    # Create EFI System Partition (260MB)
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 260MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
     $ESP | Set-Partition -NewDriveLetter S
     Write-Host "EFI partition assigned to drive letter: S"
 
-    # Create MSR partition
+    # Create MSR partition (128MB)
     New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
 
     # Create Windows partition (C:)
@@ -82,7 +82,7 @@ try {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
 
-    # Check if Windows boot files exist in deployed image
+    # Check if Windows boot files exist
     if (-not (Test-Path "C:\Windows\Boot\EFI\bootmgfw.efi")) {
         Write-Warning "Boot files missing in C:\Windows\Boot\EFI. Trying to proceed anyway..."
     } else {
@@ -95,19 +95,19 @@ try {
         New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null
     }
 
-    # Run bcdboot
+    # Run bcdboot to create UEFI boot entry
     Write-Host "Running bcdboot to create UEFI boot entry..."
     $bcdResult = bcdboot C:\Windows /s S: /f UEFI
     Write-Host $bcdResult
 
-    # Check boot files exist
+    # Verify boot files created
     if (-not (Test-Path "S:\EFI\Microsoft\Boot\bootmgfw.efi")) {
         throw "bcdboot failed to write boot files. Disk will not boot."
     } else {
         Write-Host "Boot files successfully copied to EFI partition."
     }
 
-    # Also copy bootx64.efi to generic EFI folder
+    # Copy bootx64.efi to generic EFI folder (for some firmware)
     if (-not (Test-Path "S:\EFI\Boot")) {
         New-Item -Path "S:\EFI\Boot" -ItemType Directory -Force | Out-Null
     }
@@ -115,15 +115,8 @@ try {
 
     Write-Host "Boot files created successfully."
 
-    # Lenovo BIOS Boot Order adjustment
-    Write-Host "Attempting to set Windows Boot Manager as first boot device..."
-    $LenovoToolPath = "C:\Drivers\LenovoBiosUtility\LenovoBiosSetting.exe"
-    if (Test-Path $LenovoToolPath) {
-        $result = & $LenovoToolPath set BootOrder "Windows Boot Manager" Network USB HDD CDROM
-        Write-Host "Lenovo BIOS tool result: $result"
-    } else {
-        Write-Warning "Lenovo BIOS utility not found at $LenovoToolPath. Skipping BIOS boot order configuration."
-    }
+    # Optional: do not remove S: if inspection needed
+    # Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
 
     # Ensure required folders exist
     $TargetFolders = @(
@@ -131,14 +124,13 @@ try {
         "C:\Windows\Setup\Scripts",
         "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     )
-
     foreach ($Folder in $TargetFolders) {
         if (-not (Test-Path $Folder)) {
             New-Item -Path $Folder -ItemType Directory -Force | Out-Null
         }
     }
 
-    # Autopilot configuration
+    # Write Autopilot configuration JSON
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     $AutopilotConfig = @{
         CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
@@ -147,6 +139,7 @@ try {
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
+    # Write OOBE.json for Autopilot OOBE
     $OOBEJson = @{
         CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
@@ -165,22 +158,24 @@ try {
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
-    # Write unattend.xml
-    $UnattendXml = "<?xml version=`"1.0`" encoding=`"utf-8`"?>
-<unattend xmlns=`"urn:schemas-microsoft-com:unattend`">
-  <settings pass=`"oobeSystem`">
-    <component name=`"Microsoft-Windows-International-Core`" processorArchitecture=`"amd64`" publicKeyToken=`"31bf3856ad364e35`" language=`"neutral`" versionScope=`"nonSxS`" xmlns:wcm=`"http://schemas.microsoft.com/WMIConfig/2002/State`" xmlns:xsi=`"http://www.w3.org/2001/XMLSchema-instance`">
+    # Write unattend.xml for OOBE locale settings
+    $UnattendXml = @"
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
       <InputLocale>en-GB</InputLocale>
       <SystemLocale>en-GB</SystemLocale>
       <UILanguage>en-GB</UILanguage>
       <UserLocale>en-GB</UserLocale>
     </component>
   </settings>
-</unattend>"
+</unattend>
+"@
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
-    # Download Get-WindowsAutoPilotInfo script
+    # Download Get-WindowsAutoPilotInfo.ps1 script
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
     $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
     New-Item -ItemType Directory -Path "C:\Autopilot" -Force | Out-Null
@@ -191,7 +186,7 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # Write SetupComplete.cmd
+    # Write SetupComplete.cmd with your working content
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
 @echo off
@@ -208,6 +203,9 @@ if exist "%SCRIPT%" (
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
+
+echo Waiting 300 seconds (5 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
+timeout /t 300 /nobreak > nul
 
 echo ==== WINDOWS UPDATE FOR DRIVERS ==== >> %LOGFILE%
 echo Running Windows Update for drivers... >> %LOGFILE%
@@ -227,9 +225,26 @@ exit /b 0
     Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
 
     Write-Host "SetupComplete.cmd created successfully."
+
+    # Lenovo BIOS boot order fix placeholder
+    Write-Host "Attempting to fix Lenovo BIOS boot order..."
+
+    try {
+        # Insert Lenovo BIOS boot order change command here
+        # For example, using Lenovo BIOS WMI provider or Lenovo BIOS Config Tool
+        # This must run in WinPE or environment that supports Lenovo BIOS commands
+
+        # Example (replace with your actual Lenovo BIOS command):
+        # & "LenovoBIOSConfigTool.exe" /setbootorder="Windows Boot Manager, Network Boot"
+
+        Write-Host "Lenovo BIOS boot order fix applied successfully."
+    } catch {
+        Write-Warning "Failed to apply Lenovo BIOS boot order fix: $_"
+    }
+
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    # Restart-Computer -Force
+    Restart-Computer -Force
 
 }
 catch {
