@@ -4,20 +4,19 @@ Start-Transcript -Path "X:\DeployScript.log" -Append
 try {
     Write-Host "Starting Windows 11 deployment..." -ForegroundColor Cyan
 
-    # Prompt for system type
-    Write-Host "Select system type:"
-    Write-Host "1. Productivity Desktop"
-    Write-Host "2. Productivity Laptop"
-    Write-Host "3. Line of Business Desktop"
-    $selection = Read-Host "Enter choice (1-3)"
+    # Force a valid system type selection
+    do {
+        Write-Host "Select system type:"
+        Write-Host "1. Productivity Desktop"
+        Write-Host "2. Productivity Laptop"
+        Write-Host "3. Line of Business Desktop"
+        $selection = Read-Host "Enter choice (1-3)"
+    } while ($selection -notin '1','2','3')
+
     switch ($selection) {
         '1' { $GroupTag = "ProductivityDesktop" }
         '2' { $GroupTag = "ProductivityLaptop" }
         '3' { $GroupTag = "LineOfBusinessDesktop" }
-        default {
-            Write-Warning "Invalid choice. Defaulting to ProductivityDesktop"
-            $GroupTag = "ProductivityDesktop"
-        }
     }
     Write-Host "GroupTag set to: $GroupTag"
 
@@ -35,7 +34,7 @@ try {
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    # Create EFI System Partition (now 260MB instead of 100MB)
+    # Create EFI System Partition (260 MB)
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 260MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
     $ESP | Set-Partition -NewDriveLetter S
@@ -108,7 +107,7 @@ try {
         Write-Host "Boot files successfully copied to EFI partition."
     }
 
-    # Also copy bootx64.efi to generic EFI folder (helps with some firmware)
+    # Also copy bootx64.efi to generic EFI folder
     if (-not (Test-Path "S:\EFI\Boot")) {
         New-Item -Path "S:\EFI\Boot" -ItemType Directory -Force | Out-Null
     }
@@ -116,8 +115,15 @@ try {
 
     Write-Host "Boot files created successfully."
 
-    # Optional - do not remove S: if you want to inspect later
-    # Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
+    # Lenovo BIOS Boot Order adjustment
+    Write-Host "Attempting to set Windows Boot Manager as first boot device..."
+    $LenovoToolPath = "C:\Drivers\LenovoBiosUtility\LenovoBiosSetting.exe"
+    if (Test-Path $LenovoToolPath) {
+        $result = & $LenovoToolPath set BootOrder "Windows Boot Manager" Network USB HDD CDROM
+        Write-Host "Lenovo BIOS tool result: $result"
+    } else {
+        Write-Warning "Lenovo BIOS utility not found at $LenovoToolPath. Skipping BIOS boot order configuration."
+    }
 
     # Ensure required folders exist
     $TargetFolders = @(
@@ -202,9 +208,6 @@ if exist "%SCRIPT%" (
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
-
-echo Waiting 300 seconds (5 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
-timeout /t 300 /nobreak > nul
 
 echo ==== WINDOWS UPDATE FOR DRIVERS ==== >> %LOGFILE%
 echo Running Windows Update for drivers... >> %LOGFILE%
