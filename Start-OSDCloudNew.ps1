@@ -35,7 +35,7 @@ try {
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    # Create EFI System Partition (now 260MB instead of 100MB)
+    # Create EFI System Partition
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 260MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
     $ESP | Set-Partition -NewDriveLetter S
@@ -83,7 +83,7 @@ try {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
 
-    # Check if Windows boot files exist in deployed image
+    # Check for boot files
     if (-not (Test-Path "C:\Windows\Boot\EFI\bootmgfw.efi")) {
         Write-Warning "Boot files missing in C:\Windows\Boot\EFI. Trying to proceed anyway..."
     } else {
@@ -101,14 +101,13 @@ try {
     $bcdResult = bcdboot C:\Windows /s S: /f UEFI
     Write-Host $bcdResult
 
-    # Check boot files exist
     if (-not (Test-Path "S:\EFI\Microsoft\Boot\bootmgfw.efi")) {
         throw "bcdboot failed to write boot files. Disk will not boot."
     } else {
         Write-Host "Boot files successfully copied to EFI partition."
     }
 
-    # Also copy bootx64.efi to generic EFI folder (helps with some firmware)
+    # Copy bootx64.efi to generic EFI folder
     if (-not (Test-Path "S:\EFI\Boot")) {
         New-Item -Path "S:\EFI\Boot" -ItemType Directory -Force | Out-Null
     }
@@ -116,16 +115,12 @@ try {
 
     Write-Host "Boot files created successfully."
 
-    # Optional - do not remove S: if you want to inspect later
-    # Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
-
-    # Ensure required folders exist
+    # Required folders
     $TargetFolders = @(
         "C:\Windows\Panther\Unattend",
         "C:\Windows\Setup\Scripts",
         "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     )
-
     foreach ($Folder in $TargetFolders) {
         if (-not (Test-Path $Folder)) {
             New-Item -Path $Folder -ItemType Directory -Force | Out-Null
@@ -135,9 +130,9 @@ try {
     # Autopilot configuration
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     $AutopilotConfig = @{
-        CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantId     = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        GroupTag                 = $GroupTag
+        GroupTag                  = $GroupTag
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
@@ -174,7 +169,7 @@ try {
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
-    # Download Get-WindowsAutoPilotInfo script
+    # Download Get-WindowsAutoPilotInfo.ps1
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
     $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
     New-Item -ItemType Directory -Path "C:\Autopilot" -Force | Out-Null
@@ -185,7 +180,7 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # Write SetupComplete.cmd
+    # Write SetupComplete.cmd with corrected $GroupTag expansion
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
 @echo off
@@ -198,7 +193,7 @@ echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 timeout /t 10 > nul
 
 if exist "%SCRIPT%" (
-    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
+    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "$($GroupTag)" -Online -Assign >> %LOGFILE% 2>&1
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
