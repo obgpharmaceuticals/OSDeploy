@@ -154,18 +154,31 @@ try {
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
-    # Write unattend.xml
-    $UnattendXml = "<?xml version=`"1.0`" encoding=`"utf-8`"?>
-<unattend xmlns=`"urn:schemas-microsoft-com:unattend`">
-  <settings pass=`"oobeSystem`">
-    <component name=`"Microsoft-Windows-International-Core`" processorArchitecture=`"amd64`" publicKeyToken=`"31bf3856ad364e35`" language=`"neutral`" versionScope=`"nonSxS`" xmlns:wcm=`"http://schemas.microsoft.com/WMIConfig/2002/State`" xmlns:xsi=`"http://www.w3.org/2001/XMLSchema-instance`">
+    # Updated unattend.xml
+    $UnattendXml = @"
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
       <InputLocale>en-GB</InputLocale>
       <SystemLocale>en-GB</SystemLocale>
       <UILanguage>en-GB</UILanguage>
       <UserLocale>en-GB</UserLocale>
     </component>
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <OOBE>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+        <HideEULAPage>true</HideEULAPage>
+        <ProtectYourPC>3</ProtectYourPC>
+      </OOBE>
+      <RegisteredOrganization>OBG Pharma</RegisteredOrganization>
+      <RegisteredOwner>OBG Pharma</RegisteredOwner>
+      <TimeZone>GMT Standard Time</TimeZone>
+    </component>
   </settings>
-</unattend>"
+</unattend>
+"@
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
@@ -180,7 +193,7 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # Write SetupComplete.cmd with corrected $GroupTag expansion
+    # Write SetupComplete.cmd with corrected $GroupTag and removal of defaultuser0
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
 @echo off
@@ -192,8 +205,11 @@ echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 
 timeout /t 10 > nul
 
+:: Remove defaultuser0 account if exists
+net user defaultuser0 /delete > NUL 2>&1
+
 if exist "%SCRIPT%" (
-    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "$($GroupTag)" -Online -Assign >> %LOGFILE% 2>&1
+    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2D8hcB-" -GroupTag "$($GroupTag)" -Online -Assign >> %LOGFILE% 2>&1
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
