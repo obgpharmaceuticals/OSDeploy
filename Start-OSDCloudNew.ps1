@@ -11,12 +11,12 @@ try {
     Write-Host "3. Line of Business Desktop"
     $selection = Read-Host "Enter choice (1-3)"
     switch ($selection) {
-        '1' { $GroupTag = "ProductivityDesktop11" }
-        '2' { $GroupTag = "ProductivityLaptop11" }
-        '3' { $GroupTag = "LineOfBusinessDesktop11" }
+        '1' { $GroupTag = "ProductivityDesktop" }
+        '2' { $GroupTag = "ProductivityLaptop" }
+        '3' { $GroupTag = "LineOfBusinessDesktop" }
         default {
-            Write-Warning "Invalid choice. Defaulting to ProductivityDesktop11"
-            $GroupTag = "ProductivityDesktop11"
+            Write-Warning "Invalid choice. Defaulting to ProductivityDesktop"
+            $GroupTag = "ProductivityDesktop"
         }
     }
     Write-Host "GroupTag set to: $GroupTag"
@@ -35,7 +35,7 @@ try {
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    # Create EFI System Partition
+    # Create EFI System Partition (now 260MB instead of 100MB)
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 260MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
     $ESP | Set-Partition -NewDriveLetter S
@@ -83,7 +83,7 @@ try {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
 
-    # Check for boot files
+    # Check if Windows boot files exist in deployed image
     if (-not (Test-Path "C:\Windows\Boot\EFI\bootmgfw.efi")) {
         Write-Warning "Boot files missing in C:\Windows\Boot\EFI. Trying to proceed anyway..."
     } else {
@@ -101,13 +101,14 @@ try {
     $bcdResult = bcdboot C:\Windows /s S: /f UEFI
     Write-Host $bcdResult
 
+    # Check boot files exist
     if (-not (Test-Path "S:\EFI\Microsoft\Boot\bootmgfw.efi")) {
         throw "bcdboot failed to write boot files. Disk will not boot."
     } else {
         Write-Host "Boot files successfully copied to EFI partition."
     }
 
-    # Copy bootx64.efi to generic EFI folder
+    # Also copy bootx64.efi to generic EFI folder (helps with some firmware)
     if (-not (Test-Path "S:\EFI\Boot")) {
         New-Item -Path "S:\EFI\Boot" -ItemType Directory -Force | Out-Null
     }
@@ -115,12 +116,16 @@ try {
 
     Write-Host "Boot files created successfully."
 
-    # Required folders
+    # Optional - do not remove S: if you want to inspect later
+    # Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
+
+    # Ensure required folders exist
     $TargetFolders = @(
         "C:\Windows\Panther\Unattend",
         "C:\Windows\Setup\Scripts",
         "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     )
+
     foreach ($Folder in $TargetFolders) {
         if (-not (Test-Path $Folder)) {
             New-Item -Path $Folder -ItemType Directory -Force | Out-Null
@@ -130,9 +135,9 @@ try {
     # Autopilot configuration
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     $AutopilotConfig = @{
-        CloudAssignedTenantId     = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        GroupTag                  = $GroupTag
+        GroupTag                 = $GroupTag
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
@@ -154,35 +159,22 @@ try {
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
-    # Updated unattend.xml
-    $UnattendXml = @"
-<?xml version="1.0" encoding="utf-8"?>
-<unattend xmlns="urn:schemas-microsoft-com:unattend">
-  <settings pass="oobeSystem">
-    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    # Write unattend.xml
+    $UnattendXml = "<?xml version=`"1.0`" encoding=`"utf-8`"?>
+<unattend xmlns=`"urn:schemas-microsoft-com:unattend`">
+  <settings pass=`"oobeSystem`">
+    <component name=`"Microsoft-Windows-International-Core`" processorArchitecture=`"amd64`" publicKeyToken=`"31bf3856ad364e35`" language=`"neutral`" versionScope=`"nonSxS`" xmlns:wcm=`"http://schemas.microsoft.com/WMIConfig/2002/State`" xmlns:xsi=`"http://www.w3.org/2001/XMLSchema-instance`">
       <InputLocale>en-GB</InputLocale>
       <SystemLocale>en-GB</SystemLocale>
       <UILanguage>en-GB</UILanguage>
       <UserLocale>en-GB</UserLocale>
     </component>
-    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-      <OOBE>
-        <HideLocalAccountScreen>true</HideLocalAccountScreen>
-        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
-        <HideEULAPage>true</HideEULAPage>
-        <ProtectYourPC>3</ProtectYourPC>
-      </OOBE>
-      <RegisteredOrganization>OBG Pharma</RegisteredOrganization>
-      <RegisteredOwner>OBG Pharma</RegisteredOwner>
-      <TimeZone>GMT Standard Time</TimeZone>
-    </component>
   </settings>
-</unattend>
-"@
+</unattend>"
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
-    # Download Get-WindowsAutoPilotInfo.ps1
+    # Download Get-WindowsAutoPilotInfo script
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
     $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
     New-Item -ItemType Directory -Path "C:\Autopilot" -Force | Out-Null
@@ -193,7 +185,7 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # Write SetupComplete.cmd with corrected $GroupTag and removal of defaultuser0
+    # Write SetupComplete.cmd
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
 @echo off
@@ -205,11 +197,8 @@ echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 
 timeout /t 10 > nul
 
-:: Remove defaultuser0 account if exists
-net user defaultuser0 /delete > NUL 2>&1
-
 if exist "%SCRIPT%" (
-    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2D8hcB-" -GroupTag "$($GroupTag)" -Online -Assign >> %LOGFILE% 2>&1
+    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
