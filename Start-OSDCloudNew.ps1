@@ -11,12 +11,12 @@ try {
     Write-Host "3. Line of Business Desktop"
     $selection = Read-Host "Enter choice (1-3)"
     switch ($selection) {
-        '1' { $GroupTag = "ProductivityDesktop" }
-        '2' { $GroupTag = "ProductivityLaptop" }
-        '3' { $GroupTag = "LineOfBusinessDesktop" }
+        '1' { $GroupTag = "ProductivityDesktop11" }
+        '2' { $GroupTag = "ProductivityLaptop11" }
+        '3' { $GroupTag = "LineOfBusinessDesktop11" }
         default {
-            Write-Warning "Invalid choice. Defaulting to ProductivityDesktop"
-            $GroupTag = "ProductivityDesktop"
+            Write-Warning "Invalid choice. Defaulting to ProductivityDesktop11"
+            $GroupTag = "ProductivityDesktop11"
         }
     }
     Write-Host "GroupTag set to: $GroupTag"
