@@ -203,6 +203,11 @@ if exist "%SCRIPT%" (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
 
+echo Forcing OOBE completion via registry >> %LOGFILE%
+powershell -Command "Set-ItemProperty -Path 'HKLM:\SYSTEM\Setup' -Name OOBEInProgress -Value 0 -Force"
+powershell -Command "Set-ItemProperty -Path 'HKLM:\SYSTEM\Setup\Status\SysprepStatus' -Name CleanupState -Value 2 -Force"
+powershell -Command "Set-ItemProperty -Path 'HKLM:\SYSTEM\Setup\Status\SysprepStatus' -Name GeneralizationState -Value 7 -Force"
+
 echo Waiting 300 seconds (5 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
 timeout /t 300 /nobreak > nul
 
