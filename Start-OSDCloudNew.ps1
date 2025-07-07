@@ -116,9 +116,6 @@ try {
 
     Write-Host "Boot files created successfully."
 
-    # Optional - do not remove S: if you want to inspect later
-    # Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
-
     # Ensure required folders exist
     $TargetFolders = @(
         "C:\Windows\Panther\Unattend",
@@ -151,8 +148,9 @@ try {
         DeviceLicensingType           = "WindowsEnterprise"
         Language                      = "en-GB"
         SkipZDP                       = $true
-        SkipUserStatusPage            = $true      # NEW - skip ESP
-        SkipAccountSetup              = $true      # NEW - skip ESP account setup
+        SkipUserStatusPage            = $true
+        SkipAccountSetup              = $true
+        SkipOOBE                      = $true
         RemovePreInstalledApps        = @(
             "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
             "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
@@ -162,17 +160,30 @@ try {
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
     # Write unattend.xml
-    $UnattendXml = "<?xml version=`"1.0`" encoding=`"utf-8`"?>
-<unattend xmlns=`"urn:schemas-microsoft-com:unattend`">
-  <settings pass=`"oobeSystem`">
-    <component name=`"Microsoft-Windows-International-Core`" processorArchitecture=`"amd64`" publicKeyToken=`"31bf3856ad364e35`" language=`"neutral`" versionScope=`"nonSxS`" xmlns:wcm=`"http://schemas.microsoft.com/WMIConfig/2002/State`" xmlns:xsi=`"http://www.w3.org/2001/XMLSchema-instance`">
+    $UnattendXml = @"
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
       <InputLocale>en-GB</InputLocale>
       <SystemLocale>en-GB</SystemLocale>
       <UILanguage>en-GB</UILanguage>
       <UserLocale>en-GB</UserLocale>
     </component>
   </settings>
-</unattend>"
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <UserData>
+        <AcceptEula>true</AcceptEula>
+        <ProductKey>
+          <WillShowUI>Never</WillShowUI>
+        </ProductKey>
+      </UserData>
+    </component>
+  </settings>
+</unattend>
+"@
+
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
@@ -188,7 +199,6 @@ try {
     }
 
     # Create Scheduled Task instead of SetupComplete.cmd
-    # Runs once at next boot (after OOBE finishes)
     $TaskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"Start-Transcript -Path C:\Autopilot-Diag.txt -Append; ` 
         & 'C:\Autopilot\Get-WindowsAutoPilotInfo.ps1' -TenantId 'c95ebf8f-ebb1-45ad-8ef4-463fa94051ee' -AppId 'faa1bc75-81c7-4750-ac62-1e5ea3ac48c5' -AppSecret 'ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-' -GroupTag '$GroupTag' -Online -Assign; ` 
         Set-ItemProperty -Path 'HKLM:\SYSTEM\Setup' -Name OOBEInProgress -Value 0 -Force; ` 
