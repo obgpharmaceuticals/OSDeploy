@@ -35,7 +35,7 @@ try {
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    # Create EFI System Partition (now 260MB instead of 100MB)
+    # Create EFI System Partition (260MB)
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 260MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
     $ESP | Set-Partition -NewDriveLetter S
@@ -151,6 +151,8 @@ try {
         DeviceLicensingType           = "WindowsEnterprise"
         Language                      = "en-GB"
         SkipZDP                       = $true
+        SkipUserStatusPage            = $true      # NEW - skip ESP
+        SkipAccountSetup              = $true      # NEW - skip ESP account setup
         RemovePreInstalledApps        = @(
             "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
             "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
@@ -185,38 +187,20 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # Write SetupComplete.cmd
-    $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
-    $SetupCompleteContent = @"
-@echo off
-set LOGFILE=C:\Autopilot-Diag.txt
-set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
+    # Create Scheduled Task instead of SetupComplete.cmd
+    # Runs once at next boot (after OOBE finishes)
+    $TaskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"Start-Transcript -Path C:\Autopilot-Diag.txt -Append; ` 
+        & 'C:\Autopilot\Get-WindowsAutoPilotInfo.ps1' -TenantId 'c95ebf8f-ebb1-45ad-8ef4-463fa94051ee' -AppId 'faa1bc75-81c7-4750-ac62-1e5ea3ac48c5' -AppSecret 'ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-' -GroupTag '$GroupTag' -Online -Assign; ` 
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\Setup' -Name OOBEInProgress -Value 0 -Force; ` 
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\Setup\Status\SysprepStatus' -Name CleanupState -Value 2 -Force; ` 
+        Set-ItemProperty -Path 'HKLM:\SYSTEM\Setup\Status\SysprepStatus' -Name GeneralizationState -Value 7 -Force; ` 
+        Stop-Transcript`""
+    $TaskTrigger = New-ScheduledTaskTrigger -AtLogOn
+    $TaskPrincipal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
+    Register-ScheduledTask -TaskName "AutopilotUpload" -Action $TaskAction -Trigger $TaskTrigger -Principal $TaskPrincipal -Force
 
-echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
-echo Timestamp: %DATE% %TIME% >> %LOGFILE%
+    Write-Host "Scheduled Task created to upload Autopilot info after OOBE."
 
-timeout /t 10 > nul
-
-if exist "%SCRIPT%" (
-    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
-) else (
-    echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
-)
-
-echo Forcing OOBE completion via registry >> %LOGFILE%
-powershell -Command "Set-ItemProperty -Path 'HKLM:\SYSTEM\Setup' -Name OOBEInProgress -Value 0 -Force"
-powershell -Command "Set-ItemProperty -Path 'HKLM:\SYSTEM\Setup\Status\SysprepStatus' -Name CleanupState -Value 2 -Force"
-powershell -Command "Set-ItemProperty -Path 'HKLM:\SYSTEM\Setup\Status\SysprepStatus' -Name GeneralizationState -Value 7 -Force"
-
-echo Waiting 300 seconds (5 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
-timeout /t 300 /nobreak > nul
-
-echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
-exit /b 0
-"@
-    Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
-
-    Write-Host "SetupComplete.cmd created successfully."
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     Restart-Computer -Force
