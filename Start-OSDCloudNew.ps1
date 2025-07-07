@@ -21,28 +21,37 @@ try {
     }
     Write-Host "GroupTag set to: $GroupTag"
 
+    # Always wipe Disk 0
     $DiskNumber = 0
 
+    # Clear Disk 0 including OEM partitions
     Write-Host "Clearing disk $DiskNumber including OEM partitions..."
     Clear-Disk -Number $DiskNumber -RemoveData -RemoveOEM -Confirm:$false
 
+    # Initialize as GPT
     Initialize-Disk -Number $DiskNumber -PartitionStyle GPT -Confirm:$false
+
+    # Ensure disk is online and writable
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
+    # Create EFI System Partition (now 260MB instead of 100MB)
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 260MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
     $ESP | Set-Partition -NewDriveLetter S
     Write-Host "EFI partition assigned to drive letter: S"
 
+    # Create MSR partition
     New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
 
+    # Create Windows partition (C:)
     $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
     Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
 
     Write-Host "Disk prepared successfully. Windows partition is now C:."
 
+    # Wait for network connectivity
     Write-Host "Waiting for network connectivity..."
     for ($i = 0; $i -lt 30; $i++) {
         if (Test-Connection -ComputerName 10.1.192.20 -Count 1 -Quiet) {
@@ -53,6 +62,7 @@ try {
         if ($i -eq 29) { throw "Network not available after timeout." }
     }
 
+    # Map network share as M:
     $NetworkPath = "\\10.1.192.20\ReadOnlyShare"
     $DriveLetter = "M:"
     net use $DriveLetter /delete /yes > $null 2>&1
@@ -62,6 +72,7 @@ try {
         throw "Failed to map $DriveLetter to $NetworkPath. Error details: $mapResult"
     }
 
+    # Apply WIM
     $WimPath = "M:\install.wim"
     if (-not (Test-Path $WimPath)) {
         throw "WIM file not found at $WimPath"
@@ -72,31 +83,43 @@ try {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
 
+    # Check if Windows boot files exist in deployed image
     if (-not (Test-Path "C:\Windows\Boot\EFI\bootmgfw.efi")) {
         Write-Warning "Boot files missing in C:\Windows\Boot\EFI. Trying to proceed anyway..."
     } else {
-        Write-Host "Boot files found. Continuing..."
+        Write-Host "Boot files found in C:\Windows\Boot\EFI. Continuing..."
     }
 
+    # Create EFI folders if missing
     if (-not (Test-Path "S:\EFI\Microsoft\Boot")) {
         Write-Host "Creating EFI folder structure..."
         New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null
     }
 
+    # Run bcdboot
     Write-Host "Running bcdboot to create UEFI boot entry..."
     $bcdResult = bcdboot C:\Windows /s S: /f UEFI
     Write-Host $bcdResult
 
+    # Check boot files exist
     if (-not (Test-Path "S:\EFI\Microsoft\Boot\bootmgfw.efi")) {
         throw "bcdboot failed to write boot files. Disk will not boot."
+    } else {
+        Write-Host "Boot files successfully copied to EFI partition."
     }
 
+    # Also copy bootx64.efi to generic EFI folder (helps with some firmware)
     if (-not (Test-Path "S:\EFI\Boot")) {
         New-Item -Path "S:\EFI\Boot" -ItemType Directory -Force | Out-Null
     }
     Copy-Item -Path "S:\EFI\Microsoft\Boot\bootmgfw.efi" -Destination "S:\EFI\Boot\bootx64.efi" -Force
+
     Write-Host "Boot files created successfully."
 
+    # Optional - do not remove S: if you want to inspect later
+    # Remove-PartitionAccessPath -DiskNumber $DiskNumber -PartitionNumber $ESP.PartitionNumber -AccessPath "S:\" -ErrorAction SilentlyContinue
+
+    # Ensure required folders exist
     $TargetFolders = @(
         "C:\Windows\Panther\Unattend",
         "C:\Windows\Setup\Scripts",
@@ -109,6 +132,7 @@ try {
         }
     }
 
+    # Autopilot configuration
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     $AutopilotConfig = @{
         CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
@@ -127,9 +151,6 @@ try {
         DeviceLicensingType           = "WindowsEnterprise"
         Language                      = "en-GB"
         SkipZDP                       = $true
-        SkipUserStatusPage            = $true
-        SkipAccountSetup              = $true
-        SkipOOBE                      = $true
         RemovePreInstalledApps        = @(
             "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
             "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
@@ -138,9 +159,8 @@ try {
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
-    # FIXED: Clean unattend (no specialize section!)
-    $UnattendXml = @"
-<?xml version="1.0" encoding="utf-8"?>
+    # Write unattend.xml
+    $UnattendXml = "<?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
   <settings pass="oobeSystem">
     <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -150,10 +170,11 @@ try {
       <UserLocale>en-GB</UserLocale>
     </component>
   </settings>
-</unattend>
-"@
-    Set-Content -Path "C:\Windows\Panther\Unattend\Unattend.xml" -Value $UnattendXml -Encoding UTF8
+</unattend>"
+    $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
+    Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
+    # Download Get-WindowsAutoPilotInfo script
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
     $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
     New-Item -ItemType Directory -Path "C:\Autopilot" -Force | Out-Null
@@ -164,17 +185,33 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    $TaskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"Start-Transcript -Path C:\Autopilot-Diag.txt -Append; ` 
-        & 'C:\Autopilot\Get-WindowsAutoPilotInfo.ps1' -TenantId 'c95ebf8f-ebb1-45ad-8ef4-463fa94051ee' -AppId 'faa1bc75-81c7-4750-ac62-1e5ea3ac48c5' -AppSecret 'ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-' -GroupTag '$GroupTag' -Online -Assign; ` 
-        Set-ItemProperty -Path 'HKLM:\SYSTEM\Setup' -Name OOBEInProgress -Value 0 -Force; ` 
-        Set-ItemProperty -Path 'HKLM:\SYSTEM\Setup\Status\SysprepStatus' -Name CleanupState -Value 2 -Force; ` 
-        Set-ItemProperty -Path 'HKLM:\SYSTEM\Setup\Status\SysprepStatus' -Name GeneralizationState -Value 7 -Force; ` 
-        Stop-Transcript`""
-    $TaskTrigger = New-ScheduledTaskTrigger -AtLogOn
-    $TaskPrincipal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
-    Register-ScheduledTask -TaskName "AutopilotUpload" -Action $TaskAction -Trigger $TaskTrigger -Principal $TaskPrincipal -Force
+    # Write SetupComplete.cmd
+    $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
+    $SetupCompleteContent = @"
+@echo off
+set LOGFILE=C:\Autopilot-Diag.txt
+set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
 
-    Write-Host "Scheduled Task created to upload Autopilot info after OOBE."
+echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
+echo Timestamp: %DATE% %TIME% >> %LOGFILE%
+
+timeout /t 10 > nul
+
+if exist "%SCRIPT%" (
+    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
+) else (
+    echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
+)
+
+echo Waiting 300 seconds (5 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
+timeout /t 300 /nobreak > nul
+
+echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
+exit /b 0
+"@
+    Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
+
+    Write-Host "SetupComplete.cmd created successfully."
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     Restart-Computer -Force
@@ -186,3 +223,5 @@ catch {
 finally {
     try { Stop-Transcript } catch {}
 }
+
+
