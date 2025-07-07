@@ -118,7 +118,7 @@ try {
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
-    # FIX: Add proper skip flags for Entra Join
+    # Updated OOBE.json for Entra Join, with SkipOOBE = false
     $OOBEJson = @{
         CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
@@ -131,7 +131,7 @@ try {
         SkipZDP                       = $true
         SkipUserStatusPage            = $true
         SkipAccountSetup              = $true
-        SkipOOBE                      = $true
+        SkipOOBE                      = $false
         RemovePreInstalledApps        = @(
             "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
             "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
@@ -164,15 +164,33 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # REPLACE SetupComplete.cmd with Scheduled Task
-    $TaskAction = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -Command `"Start-Transcript -Path C:\Autopilot-Diag.txt -Append; ` 
-        & 'C:\Autopilot\Get-WindowsAutoPilotInfo.ps1' -TenantId 'c95ebf8f-ebb1-45ad-8ef4-463fa94051ee' -AppId 'faa1bc75-81c7-4750-ac62-1e5ea3ac48c5' -AppSecret 'ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-' -GroupTag '$GroupTag' -Online -Assign; ` 
-        Stop-Transcript`""
-    $TaskTrigger = New-ScheduledTaskTrigger -AtLogOn
-    $TaskPrincipal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
-    Register-ScheduledTask -TaskName "AutopilotUpload" -Action $TaskAction -Trigger $TaskTrigger -Principal $TaskPrincipal -Force
+    # Restore original SetupComplete.cmd approach
+    $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
+    $SetupCompleteContent = @"
+@echo off
+set LOGFILE=C:\Autopilot-Diag.txt
+set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
 
-    Write-Host "Scheduled Task created to upload Autopilot info after OOBE."
+echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
+echo Timestamp: %DATE% %TIME% >> %LOGFILE%
+
+timeout /t 10 > nul
+
+if exist "%SCRIPT%" (
+    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
+) else (
+    echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
+)
+
+echo Waiting 300 seconds (5 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
+timeout /t 300 /nobreak > nul
+
+echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
+exit /b 0
+"@
+    Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
+
+    Write-Host "SetupComplete.cmd created successfully."
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     Restart-Computer -Force
