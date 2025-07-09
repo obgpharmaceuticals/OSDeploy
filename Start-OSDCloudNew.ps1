@@ -73,6 +73,19 @@ try {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
 
+    # ✅ NEW: Disable ZDP in the offline Windows registry
+    Write-Host "Applying registry keys to disable ZDP..."
+
+    reg load HKLM\TempHive C:\Windows\System32\Config\SOFTWARE
+
+    New-Item -Path "HKLM:\TempHive\Microsoft\Windows\CurrentVersion\OOBE" -Force | Out-Null
+
+    Set-ItemProperty -Path "HKLM:\TempHive\Microsoft\Windows\CurrentVersion\OOBE" -Name "DisableZDP" -Value 1 -Type DWord
+
+    reg unload HKLM\TempHive
+
+    Write-Host "DisableZDP registry key written successfully."
+
     if (-not (Test-Path "C:\Windows\Boot\EFI\bootmgfw.efi")) {
         Write-Warning "Boot files missing in C:\Windows\Boot\EFI. Trying to proceed anyway..."
     } else {
