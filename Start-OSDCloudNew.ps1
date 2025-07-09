@@ -118,7 +118,7 @@ try {
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
-    # Updated OOBE.json for Entra Join, with SkipOOBE = false
+    # Updated OOBE.json for Pre-Provisioning: do NOT skip screens
     $OOBEJson = @{
         CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
@@ -129,8 +129,8 @@ try {
         DeviceLicensingType           = "WindowsEnterprise"
         Language                      = "en-GB"
         SkipZDP                       = $true
-        SkipUserStatusPage            = $true
-        SkipAccountSetup              = $true
+        SkipUserStatusPage            = $false
+        SkipAccountSetup              = $false
         SkipOOBE                      = $false
         RemovePreInstalledApps        = @(
             "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
@@ -164,7 +164,7 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # Restore original SetupComplete.cmd approach
+    # Keep SetupComplete.cmd for running Autopilot upload
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
 @echo off
