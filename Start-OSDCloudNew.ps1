@@ -73,6 +73,12 @@ try {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
 
+    Write-Host "Disabling ZDP offline in the image..."
+    reg load HKLM\TempHive C:\Windows\System32\config\SOFTWARE
+    reg add "HKLM\TempHive\Microsoft\Windows\CurrentVersion\OOBE" /v DisableZDP /t REG_DWORD /d 1 /f
+    reg unload HKLM\TempHive
+    Write-Host "ZDP has been disabled offline successfully."
+
     if (-not (Test-Path "C:\Windows\Boot\EFI\bootmgfw.efi")) {
         Write-Warning "Boot files missing in C:\Windows\Boot\EFI. Trying to proceed anyway..."
     } else {
@@ -98,12 +104,10 @@ try {
     Copy-Item -Path "S:\EFI\Microsoft\Boot\bootmgfw.efi" -Destination "S:\EFI\Boot\bootx64.efi" -Force
     Write-Host "Boot files created successfully."
 
-    # Create required folders in new OS
     $TargetFolders = @(
         "C:\Windows\Panther\Unattend",
         "C:\Windows\Setup\Scripts",
-        "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot",
-        "C:\Autopilot"
+        "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     )
 
     foreach ($Folder in $TargetFolders) {
@@ -112,7 +116,6 @@ try {
         }
     }
 
-    # Write AutopilotConfigurationFile.json
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     $AutopilotConfig = @{
         CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
@@ -121,7 +124,6 @@ try {
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
-    # Write OOBE.json
     $OOBEJson = @{
         CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
@@ -143,7 +145,6 @@ try {
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
-    # Write Unattend.xml
     $UnattendXml = @"
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
@@ -173,9 +174,9 @@ try {
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
-    # Download Autopilot script
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
     $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
+    New-Item -ItemType Directory -Path "C:\Autopilot" -Force | Out-Null
     try {
         Invoke-WebRequest -Uri $AutoPilotScriptURL -OutFile $AutoPilotScriptPath -UseBasicParsing -ErrorAction Stop
         Write-Host "Downloaded Get-WindowsAutoPilotInfo.ps1 successfully."
@@ -183,7 +184,7 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # Write SetupComplete.cmd
+    # SetupComplete.cmd for running Autopilot upload
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
 @echo off
@@ -192,9 +193,6 @@ set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
 
 echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
 echo Timestamp: %DATE% %TIME% >> %LOGFILE%
-
-REM === Disable ZDP so OOBE doesn't loop ===
-reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\OOBE" /v DisableZDP /t REG_DWORD /d 1 /f
 
 timeout /t 10 > nul
 
