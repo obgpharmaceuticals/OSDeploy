@@ -44,7 +44,6 @@ try {
 
     Write-Host "Disk prepared successfully. Windows partition is now C:."
 
-    # Ensure network connectivity
     Write-Host "Waiting for network connectivity..."
     for ($i = 0; $i -lt 30; $i++) {
         if (Test-Connection -ComputerName 10.1.192.20 -Count 1 -Quiet) {
@@ -105,7 +104,6 @@ try {
     Copy-Item -Path "S:\EFI\Microsoft\Boot\bootmgfw.efi" -Destination "S:\EFI\Boot\bootx64.efi" -Force
     Write-Host "Boot files created successfully."
 
-    # Create required folders
     $TargetFolders = @(
         "C:\Windows\Panther\Unattend",
         "C:\Windows\Setup\Scripts",
@@ -118,16 +116,16 @@ try {
         }
     }
 
-    # Autopilot Configuration File
+    # Autopilot configuration file
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     $AutopilotConfig = @{
-        CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantId     = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        GroupTag                 = $GroupTag
+        GroupTag                  = $GroupTag
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
-    # OOBE.json for user-driven Autopilot
+    # OOBE JSON for pre-provisioning
     $OOBEJson = @{
         CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
@@ -141,6 +139,7 @@ try {
         SkipUserStatusPage            = $false
         SkipAccountSetup              = $false
         SkipOOBE                      = $false
+        ZtdUserDrivenAzureAdJoin      = $true
         RemovePreInstalledApps        = @(
             "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
             "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
@@ -149,7 +148,7 @@ try {
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
-    # Unattend.xml
+    # Unattend.xml - SkipMachineOOBE true for white-glove
     $UnattendXml = @"
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
@@ -170,7 +169,7 @@ try {
         <HideOnlineAccountScreens>false</HideOnlineAccountScreens>
         <HideWirelessSetupInOOBE>false</HideWirelessSetupInOOBE>
         <SkipUserOOBE>false</SkipUserOOBE>
-        <SkipMachineOOBE>false</SkipMachineOOBE>
+        <SkipMachineOOBE>true</SkipMachineOOBE>
       </OOBE>
     </component>
   </settings>
@@ -179,10 +178,47 @@ try {
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
+    # Download Autopilot script
+    $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
+    $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
+    New-Item -ItemType Directory -Path "C:\Autopilot" -Force | Out-Null
+    try {
+        Invoke-WebRequest -Uri $AutoPilotScriptURL -OutFile $AutoPilotScriptPath -UseBasicParsing -ErrorAction Stop
+        Write-Host "Downloaded Get-WindowsAutoPilotInfo.ps1 successfully."
+    } catch {
+        Write-Warning "Failed to download Autopilot script: $_"
+    }
+
+    # SetupComplete.cmd for uploading hardware hash
+    $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
+    $SetupCompleteContent = @"
+@echo off
+set LOGFILE=C:\Autopilot-Diag.txt
+set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
+
+echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
+echo Timestamp: %DATE% %TIME% >> %LOGFILE%
+
+timeout /t 10 > nul
+
+if exist "%SCRIPT%" (
+    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
+) else (
+    echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
+)
+
+echo Waiting 300 seconds (5 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
+timeout /t 300 /nobreak > nul
+
+echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
+exit /b 0
+"@
+    Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
+
+    Write-Host "SetupComplete.cmd created successfully."
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     # Restart-Computer -Force
-
 }
 catch {
     Write-Error "Deployment failed: $_"
