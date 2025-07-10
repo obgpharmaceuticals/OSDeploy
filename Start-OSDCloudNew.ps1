@@ -116,16 +116,14 @@ try {
         }
     }
 
-    # Autopilot configuration file
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     $AutopilotConfig = @{
-        CloudAssignedTenantId     = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        GroupTag                  = $GroupTag
+        GroupTag                 = $GroupTag
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
-    # OOBE JSON for pre-provisioning
     $OOBEJson = @{
         CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
@@ -139,7 +137,6 @@ try {
         SkipUserStatusPage            = $false
         SkipAccountSetup              = $false
         SkipOOBE                      = $false
-        ZtdUserDrivenAzureAdJoin      = $true
         RemovePreInstalledApps        = @(
             "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
             "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
@@ -148,7 +145,6 @@ try {
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
-    # Unattend.xml - SkipMachineOOBE true for white-glove
     $UnattendXml = @"
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
@@ -169,7 +165,7 @@ try {
         <HideOnlineAccountScreens>false</HideOnlineAccountScreens>
         <HideWirelessSetupInOOBE>false</HideWirelessSetupInOOBE>
         <SkipUserOOBE>false</SkipUserOOBE>
-        <SkipMachineOOBE>true</SkipMachineOOBE>
+        <SkipMachineOOBE>false</SkipMachineOOBE>
       </OOBE>
     </component>
   </settings>
@@ -178,7 +174,6 @@ try {
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
-    # Download Autopilot script
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
     $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
     New-Item -ItemType Directory -Path "C:\Autopilot" -Force | Out-Null
@@ -189,7 +184,7 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # SetupComplete.cmd for uploading hardware hash
+    # SetupComplete.cmd for running Autopilot upload
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
 @echo off
@@ -219,6 +214,7 @@ exit /b 0
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     # Restart-Computer -Force
+
 }
 catch {
     Write-Error "Deployment failed: $_"
