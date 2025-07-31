@@ -121,31 +121,28 @@ try {
         CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
         GroupTag                 = $GroupTag
-        CloudAssignedEdition     = "Enterprise"
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
-    $OOBEJson = @(
-        @{
-            CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
-            CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
-            DeviceType                    = $GroupTag
-            EnableUserStatusTracking      = $true
-            EnableUserConfirmation        = $true
-            EnableProvisioningDiagnostics = $true
-            DeviceLicensingType           = "WindowsEnterprise"
-            Language                      = "en-GB"
-            SkipZDP                       = $true
-            SkipUserStatusPage            = $false
-            SkipAccountSetup              = $false
-            SkipOOBE                      = $false
-            RemovePreInstalledApps        = @(
-                "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
-                "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
-                "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder"
-            )
-        }
-    )
+    $OOBEJson = @{
+        CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
+        DeviceType                    = $GroupTag
+        EnableUserStatusTracking      = $true
+        EnableUserConfirmation        = $true
+        EnableProvisioningDiagnostics = $true
+        DeviceLicensingType           = "WindowsEnterprise"
+        Language                      = "en-GB"
+        SkipZDP                       = $true
+        SkipUserStatusPage            = $false
+        SkipAccountSetup              = $false
+        SkipOOBE                      = $false
+        RemovePreInstalledApps        = @(
+            "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
+            "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
+            "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder"
+        )
+    }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
     $UnattendXml = @"
