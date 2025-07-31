@@ -89,4 +89,4 @@ IF %ERRORLEVEL% NEQ 0 (
 
 # Final step - reboot
 Write-Host "Deployment complete. Rebooting into OOBE..."
-Restart-Computer
+# Restart-Computer
