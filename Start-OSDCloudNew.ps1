@@ -131,6 +131,7 @@ try {
         EnableUserStatusTracking      = $true
         EnableUserConfirmation        = $true
         EnableProvisioningDiagnostics = $true
+        DeviceLicensingType           = "WindowsEnterprise"
         Language                      = "en-GB"
         SkipZDP                       = $true
         SkipUserStatusPage            = $false
@@ -221,3 +222,5 @@ catch {
 finally {
     try { Stop-Transcript } catch {}
 }
+
+
