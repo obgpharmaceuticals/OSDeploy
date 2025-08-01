@@ -118,26 +118,26 @@ try {
 
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     $AutopilotConfig = @{
-        CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantId     = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        GroupTag                 = $GroupTag
+        GroupTag                  = $GroupTag
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
+    # Write OOBE JSON config (without DeviceLicensingType)
     $OOBEJson = @{
-        CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
-        CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
-        DeviceType                    = $GroupTag
-        EnableUserStatusTracking      = $true
-        EnableUserConfirmation        = $true
-        EnableProvisioningDiagnostics = $true
-        DeviceLicensingType           = "WindowsEnterprise"
-        Language                      = "en-GB"
-        SkipZDP                       = $true
-        SkipUserStatusPage            = $false
-        SkipAccountSetup              = $false
-        SkipOOBE                      = $false
-        RemovePreInstalledApps        = @(
+        CloudAssignedTenantId          = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantDomain      = "obgpharma.onmicrosoft.com"
+        DeviceType                     = $GroupTag
+        EnableUserStatusTracking       = $true
+        EnableUserConfirmation         = $true
+        EnableProvisioningDiagnostics  = $true
+        Language                       = "en-GB"
+        SkipZDP                        = $true
+        SkipUserStatusPage             = $false
+        SkipAccountSetup               = $false
+        SkipOOBE                       = $false
+        RemovePreInstalledApps         = @(
             "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
             "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
             "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder"
@@ -222,5 +222,3 @@ catch {
 finally {
     try { Stop-Transcript } catch {}
 }
-
-
