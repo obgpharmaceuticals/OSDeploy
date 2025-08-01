@@ -129,6 +129,7 @@ try {
         CloudAssignedTenantId          = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain      = "obgpharma.onmicrosoft.com"
         DeviceType                     = $GroupTag
+        CloudAssignedInstallId         = 5
         EnableUserStatusTracking       = $true
         EnableUserConfirmation         = $true
         EnableProvisioningDiagnostics  = $true
@@ -213,7 +214,7 @@ exit /b 0
     Write-Host "SetupComplete.cmd created successfully."
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    # Restart-Computer -Force
+    Restart-Computer -Force
 
 }
 catch {
