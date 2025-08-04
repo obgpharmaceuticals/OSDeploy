@@ -133,7 +133,7 @@ try {
         EnableUserStatusTracking       = $true
         EnableUserConfirmation         = $true
         EnableProvisioningDiagnostics  = $true
-        Language                       = "en-GB"
+        Language                       = "en-US"
         SkipZDP                        = $true
         SkipUserStatusPage             = $false
         SkipAccountSetup               = $false
