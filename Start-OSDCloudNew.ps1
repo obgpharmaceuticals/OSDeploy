@@ -185,18 +185,6 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # Determine required module and location of the file
-    try {
-        & $AutoPilotScriptPath
-    } catch {
-       Write-Host "Failed to run script: $_"
-       # Extract the module name from the error message
-       if ($_ -match "Could not find module '(.*?)'") {
-            $moduleName = $Matches[1]
-            Write-Host "Identified missing module: $moduleName"
-        }
-    }
-
     # SetupComplete.cmd for running Autopilot upload
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
@@ -208,7 +196,7 @@ set MODULE_PATH=C:\Autopilot (Change this to correct location)
 echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
 echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 
-timeout /t 10 > nul
+timeout /t 600 > nul
 
 if exist "%SCRIPT%" (
     powershell.exe -ExecutionPolicy Bypass -NoProfile -ImportSystemModules -ModulePath "%MODULE_PATH%" -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
@@ -216,8 +204,8 @@ if exist "%SCRIPT%" (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
 
-echo Waiting 300 seconds (5 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
-timeout /t 300 /nobreak > nul
+echo Waiting 600 seconds (10 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
+timeout /t 600 /nobreak > nul
 
 echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
 exit /b 0
@@ -227,7 +215,7 @@ exit /b 0
     Write-Host "SetupComplete.cmd created successfully."
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    Restart-Computer -Force
+    # Restart-Computer -Force
 
 }
 catch {
