@@ -6,6 +6,7 @@ try {
 
     # Prompt for system type
     Write-Host "Select system type:"
+    Write-Host "1. Productivity Desktop"
     Write-Host "2. Productivity Laptop"
     Write-Host "3. Line of Business Desktop"
     $selection = Read-Host "Enter choice (1-3)"
@@ -86,7 +87,7 @@ try {
 
     if (-not (Test-Path "S:\EFI\Microsoft\Boot")) {
         Write-Host "Creating EFI folder structure..."
-        New-Item -ItemType Directory -Force | Out-Null
+        New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null
     }
 
     Write-Host "Running bcdboot to create UEFI boot entry..."
@@ -114,36 +115,6 @@ try {
             New-Item -Path $Folder -ItemType Directory -Force | Out-Null
         }
     }
-
-    $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
-    $AutopilotConfig = @{
-        CloudAssignedTenantId     = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
-        CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        GroupTag                  = $GroupTag
-    }
-    $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
-
-    # Write OOBE JSON config (without DeviceLicensingType)
-    $OOBEJson = @{
-        CloudAssignedTenantId          = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
-        CloudAssignedTenantDomain      = "obgpharma.onmicrosoft.com"
-        DeviceType                     = $GroupTag
-        CloudAssignedInstallId         = 3
-        EnableUserStatusTracking       = $true
-        EnableUserConfirmation         = $true
-        EnableProvisioningDiagnostics  = $true
-        Language                       = "en-US"
-        SkipZDP                        = $true
-        SkipUserStatusPage             = $false
-        SkipAccountSetup               = $false
-        SkipOOBE                       = $false
-        RemovePreInstalledApps         = @(
-            "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
-            "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
-            "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder"
-        )
-    }
-    $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
     $UnattendXml = @"
 <?xml version="1.0" encoding="utf-8"?>
@@ -196,7 +167,7 @@ echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 
 timeout /t 10 > nul
 
-powershell.exe -ExecutionPolicy Bypass -NoProfile -ImportSystemModules -ModulePath "%MODULE_PATH%" -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
 
 echo Waiting 300 seconds (5 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
 timeout /t 300 /nobreak > nul
