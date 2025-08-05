@@ -125,28 +125,6 @@ try {
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
-    # Write OOBE JSON config (without DeviceLicensingType)
-    $OOBEJson = @{
-        CloudAssignedTenantId          = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
-        CloudAssignedTenantDomain      = "obgpharma.onmicrosoft.com"
-        DeviceType                     = $GroupTag
-        CloudAssignedInstallId         = 3
-        EnableUserStatusTracking       = $true
-        EnableUserConfirmation         = $true
-        EnableProvisioningDiagnostics  = $true
-        Language                       = "en-US"
-        SkipZDP                        = $true
-        SkipUserStatusPage             = $false
-        SkipAccountSetup               = $false
-        SkipOOBE                       = $false
-        RemovePreInstalledApps         = @(
-            "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
-            "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
-            "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder"
-        )
-    }
-    $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
-
     $UnattendXml = @"
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
@@ -217,7 +195,7 @@ exit /b 0
     Write-Host "SetupComplete.cmd created successfully."
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    # Restart-Computer -Force
+    Restart-Computer -Force
 
 }
 catch {
