@@ -6,6 +6,7 @@ try {
 
     # Prompt for system type
     Write-Host "Select system type:"
+    Write-Host "1. Productivity Desktop"
     Write-Host "2. Productivity Laptop"
     Write-Host "3. Line of Business Desktop"
     $selection = Read-Host "Enter choice (1-3)"
@@ -19,8 +20,6 @@ try {
         }
     }
     Write-Host "GroupTag set to: $GroupTag"
-    Write-Host "GroupTag Value (before reboot): $GroupTag"
-    [Environment]::SetEnvironmentVariable("GroupTag", $GroupTag, "Machine")
 
     # Always wipe Disk 0
     $DiskNumber = 0
@@ -125,15 +124,37 @@ try {
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
+    # Write OOBE JSON config (without DeviceLicensingType)
+    $OOBEJson = @{
+        CloudAssignedTenantId          = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantDomain      = "obgpharma.onmicrosoft.com"
+        DeviceType                     = $GroupTag
+        CloudAssignedInstallId         = 3
+        EnableUserStatusTracking       = $true
+        EnableUserConfirmation         = $true
+        EnableProvisioningDiagnostics  = $true
+        Language                       = "en-US"
+        SkipZDP                        = $true
+        SkipUserStatusPage             = $false
+        SkipAccountSetup               = $false
+        SkipOOBE                       = $false
+        RemovePreInstalledApps         = @(
+            "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
+            "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
+            "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder"
+        )
+    }
+    $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
+
     $UnattendXml = @"
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
   <settings pass="oobeSystem">
     <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-      <InputLocale>en-US</InputLocale>
-      <SystemLocale>en-US</SystemLocale>
-      <UILanguage>en-US</UILanguage>
-      <UserLocale>en-US</UserLocale>
+      <InputLocale>en-GB</InputLocale>
+      <SystemLocale>en-GB</SystemLocale>
+      <UILanguage>en-GB</UILanguage>
+      <UserLocale>en-GB</UserLocale>
     </component>
     <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
       <OOBE>
@@ -170,22 +191,20 @@ try {
 @echo off
 set LOGFILE=C:\Autopilot-Diag.txt
 set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
-set MODULE_PATH=C:\Autopilot
 
 echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
 echo Timestamp: %DATE% %TIME% >> %LOGFILE%
-echo GroupTag Value: %GroupTag% >> %LOGFILE%
 
-timeout /t 600 > nul
+timeout /t 10 > nul
 
 if exist "%SCRIPT%" (
-    powershell.exe -ExecutionPolicy Bypass -NoProfile -ImportSystemModules -ModulePath "%MODULE_PATH%" -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "%GroupTag%" -Online -Assign >> %LOGFILE% 2>&1
+    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
 
-echo Waiting 600 seconds (10 minutes) to ensure upload finishes and prevent reboot...
-timeout /t 600 /nobreak > nul
+echo Waiting 300 seconds (5 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
+timeout /t 300 /nobreak > nul
 
 echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
 exit /b 0
@@ -195,7 +214,7 @@ exit /b 0
     Write-Host "SetupComplete.cmd created successfully."
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    Restart-Computer -Force
+    # Restart-Computer -Force
 
 }
 catch {
