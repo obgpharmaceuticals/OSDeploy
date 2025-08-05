@@ -191,20 +191,21 @@ try {
 @echo off
 set LOGFILE=C:\Autopilot-Diag.txt
 set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
-set MODULE_PATH=C:\Autopilot (Change this to correct location)
+set MODULE_PATH=C:\Autopilot
 
 echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
 echo Timestamp: %DATE% %TIME% >> %LOGFILE%
+echo GroupTag Value: %GroupTag% >> %LOGFILE%
 
 timeout /t 600 > nul
 
 if exist "%SCRIPT%" (
-    powershell.exe -ExecutionPolicy Bypass -NoProfile -ImportSystemModules -ModulePath "%MODULE_PATH%" -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
+    powershell.exe -ExecutionPolicy Bypass -NoProfile -ImportSystemModules -ModulePath "%MODULE_PATH%" -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "%GroupTag%" -Online -Assign >> %LOGFILE% 2>&1
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
 
-echo Waiting 600 seconds (10 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
+echo Waiting 600 seconds (10 minutes) to ensure upload finishes and prevent reboot...
 timeout /t 600 /nobreak > nul
 
 echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
@@ -215,7 +216,7 @@ exit /b 0
     Write-Host "SetupComplete.cmd created successfully."
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    # Restart-Computer -Force
+    Restart-Computer -Force
 
 }
 catch {
