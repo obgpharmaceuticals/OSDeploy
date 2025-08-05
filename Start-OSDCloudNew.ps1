@@ -6,7 +6,6 @@ try {
 
     # Prompt for system type
     Write-Host "Select system type:"
-    Write-Host "1. Productivity Desktop"
     Write-Host "2. Productivity Laptop"
     Write-Host "3. Line of Business Desktop"
     $selection = Read-Host "Enter choice (1-3)"
@@ -20,6 +19,8 @@ try {
         }
     }
     Write-Host "GroupTag set to: $GroupTag"
+    Write-Host "GroupTag Value (before reboot): $GroupTag"
+    [Environment]::SetEnvironmentVariable("GroupTag", $GroupTag, "Machine")
 
     # Always wipe Disk 0
     $DiskNumber = 0
@@ -216,7 +217,7 @@ exit /b 0
     Write-Host "SetupComplete.cmd created successfully."
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    Restart-Computer -Force
+    # Restart-Computer -Force
 
 }
 catch {
