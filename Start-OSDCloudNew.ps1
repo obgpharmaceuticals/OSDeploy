@@ -129,7 +129,6 @@ try {
         CloudAssignedTenantId          = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain      = "obgpharma.onmicrosoft.com"
         DeviceType                     = $GroupTag
-        CloudAssignedInstallId         = 3
         EnableUserStatusTracking       = $true
         EnableUserConfirmation         = $true
         EnableProvisioningDiagnostics  = $true
