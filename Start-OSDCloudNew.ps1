@@ -116,15 +116,44 @@ try {
         }
     }
 
+    $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
+    $AutopilotConfig = @{
+        CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
+        GroupTag                 = $GroupTag
+    }
+    $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
+
+    $OOBEJson = @{
+        CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
+        DeviceType                    = $GroupTag
+        EnableUserStatusTracking      = $true
+        EnableUserConfirmation        = $true
+        EnableProvisioningDiagnostics = $true
+        DeviceLicensingType           = "WindowsEnterprise"
+        Language                      = "en-GB"
+        SkipZDP                       = $true
+        SkipUserStatusPage            = $false
+        SkipAccountSetup              = $false
+        SkipOOBE                      = $false
+        RemovePreInstalledApps        = @(
+            "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
+            "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
+            "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder"
+        )
+    }
+    $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
+
     $UnattendXml = @"
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
   <settings pass="oobeSystem">
     <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-      <InputLocale>en-US</InputLocale>
-      <SystemLocale>en-US</SystemLocale>
-      <UILanguage>en-US</UILanguage>
-      <UserLocale>en-US</UserLocale>
+      <InputLocale>en-GB</InputLocale>
+      <SystemLocale>en-GB</SystemLocale>
+      <UILanguage>en-GB</UILanguage>
+      <UserLocale>en-GB</UserLocale>
     </component>
     <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
       <OOBE>
@@ -167,7 +196,11 @@ echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 
 timeout /t 10 > nul
 
-powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
+if exist "%SCRIPT%" (
+    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
+) else (
+    echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
+)
 
 echo Waiting 300 seconds (5 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
 timeout /t 300 /nobreak > nul
@@ -180,7 +213,7 @@ exit /b 0
     Write-Host "SetupComplete.cmd created successfully."
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    Restart-Computer -Force
+    # Restart-Computer -Force
 
 }
 catch {
