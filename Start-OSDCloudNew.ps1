@@ -109,7 +109,8 @@ try {
     $SetupComplete = @'
 @echo off
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-"$LogPath = 'C:\\Windows\\Temp\\AutopilotLog.txt'; ^
+"if (-not (Test-Path 'C:\\AutopilotLogs')) { New-Item -Path 'C:\\AutopilotLogs' -ItemType Directory } ; ^
+ $LogPath = 'C:\\AutopilotLogs\\AutopilotLog.txt'; ^
  Start-Transcript -Path $LogPath -Append; ^
  Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted; ^
  if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { ^
