@@ -68,7 +68,8 @@ try {
     # Set up boot files
     bcdboot "C:\Windows" /s S: /f UEFI
 
-    # Create AutopilotConfigurationFile.json
+    # Create AutopilotConfigurationFile.json folder and file
+    New-Item -ItemType Directory -Path "$osDriveLetter`:\Windows\Provisioning\Autopilot" -Force | Out-Null
     $AutoPilotJSON = @{
         CloudAssignedTenantId = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
@@ -83,7 +84,8 @@ try {
     } | ConvertTo-Json -Depth 3
     $AutoPilotJSON | Out-File -Encoding ASCII -FilePath "$osDriveLetter`:\Windows\Provisioning\Autopilot\AutopilotConfigurationFile.json"
 
-    # Create OOBE.json
+    # Create OOBE.json folder and file
+    New-Item -ItemType Directory -Path "$osDriveLetter`:\Windows\OOBE" -Force | Out-Null
     $OOBEjson = @{
         version = "1.0.0"
         "cloudAssignedOobeConfig" = @{
@@ -103,35 +105,9 @@ try {
     } | ConvertTo-Json -Depth 4
     $OOBEjson | Out-File -Encoding ASCII -FilePath "$osDriveLetter`:\Windows\OOBE\OOBE.json"
 
-    # Write SetupComplete.cmd
-    $SetupComplete = @'
-@echo off
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-"$LogPath = 'C:\\Windows\\Temp\\AutopilotLog.txt'; ^
- Start-Transcript -Path $LogPath -Append; ^
- Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted; ^
- if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) { ^
-     Install-PackageProvider -Name NuGet -Force; ^
- }; ^
- Install-Script -Name Get-WindowsAutopilotInfo -Force; ^
- $tries = 0; ^
- while ($tries -lt 5) { ^
-     try { ^
-         Get-WindowsAutopilotInfo -Online `
-         -TenantId 'c95ebf8f-ebb1-45ad-8ef4-463fa94051ee' `
-         -AppId 'faa1bc75-81c7-4750-ac62-1e5ea3ac48c5' `
-         -AppSecret 'ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-' `
-         -GroupTag '$GroupTag' -Assign -ErrorAction Stop; ^
-         break; ^
-     } catch { ^
-         $tries++; ^
-         Start-Sleep -Seconds 30; ^
-     } ^
- }; ^
- Stop-Transcript"
-'@
+    # Write SetupComplete.cmd script folder and file
     $SetupCompletePath = "$osDriveLetter`:\Windows\Setup\Scripts"
-    New-Item -ItemType Directory -Path $SetupCompletePath -Force
+    New-Item -ItemType Directory -Path $SetupCompletePath -Force | Out-Null
     $SetupComplete | Set-Content -Path "$SetupCompletePath\SetupComplete.cmd" -Encoding ASCII
 
     Write-Host "Deployment script complete. System ready to reboot."
