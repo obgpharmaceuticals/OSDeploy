@@ -20,7 +20,7 @@ try {
         }
     }
 
-     # Always wipe Disk 0
+    # Always wipe Disk 0
     $DiskNumber = 0
 
     Write-Host "Clearing disk $DiskNumber including OEM partitions..."
@@ -40,33 +40,33 @@ try {
     $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
     Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
+    $osDriveLetter = "C"  # <-- Added to ensure Autopilot files go to the right place
 
     Write-Host "Disk prepared successfully. Windows partition is now C:."
 
-    # Apply Windows image
     # Map network share
-$NetworkPath = "\\10.1.192.20\ReadOnlyShare"
-$DriveLetter = "M:"
-net use $DriveLetter /delete /yes > $null 2>&1
-Write-Host "Mapping $DriveLetter to $NetworkPath..."
-$mapResult = net use $DriveLetter $NetworkPath /persistent:no 2>&1
-if ($LASTEXITCODE -ne 0) {
-    throw "Failed to map $DriveLetter to $NetworkPath. Error details: $mapResult"
-}
+    $NetworkPath = "\\10.1.192.20\ReadOnlyShare"
+    $DriveLetter = "M:"
+    net use $DriveLetter /delete /yes > $null 2>&1
+    Write-Host "Mapping $DriveLetter to $NetworkPath..."
+    $mapResult = net use $DriveLetter $NetworkPath /persistent:no 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to map $DriveLetter to $NetworkPath. Error details: $mapResult"
+    }
 
-# Apply Windows image
-$WimPath = "M:\install.wim"
-if (-not (Test-Path $WimPath)) {
-    throw "WIM file not found at $WimPath"
-}
-Write-Host "Applying Windows image from $WimPath to C:..."
-$dism = Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image", "/ImageFile:$WimPath", "/Index:1", "/ApplyDir:C:\" -Wait -PassThru
-if ($dism.ExitCode -ne 0) {
-    throw "DISM failed with exit code $($dism.ExitCode)"
-}
+    # Apply Windows image
+    $WimPath = "M:\install.wim"
+    if (-not (Test-Path $WimPath)) {
+        throw "WIM file not found at $WimPath"
+    }
+    Write-Host "Applying Windows image from $WimPath to C:..."
+    $dism = Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image", "/ImageFile:$WimPath", "/Index:1", "/ApplyDir:C:\" -Wait -PassThru
+    if ($dism.ExitCode -ne 0) {
+        throw "DISM failed with exit code $($dism.ExitCode)"
+    }
 
-# Set up boot files
-bcdboot "C:\Windows" /s S: /f UEFI
+    # Set up boot files
+    bcdboot "C:\Windows" /s S: /f UEFI
 
     # Create AutopilotConfigurationFile.json
     $AutoPilotJSON = @{
