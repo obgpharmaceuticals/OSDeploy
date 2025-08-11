@@ -20,25 +20,28 @@ try {
         }
     }
 
-    # Wipe and prepare disk
-    $disk = Get-Disk | Where-Object PartitionStyle -ne 'RAW' | Sort-Object -Property Number | Select-Object -First 1
-    if ($disk) {
-        $disk | Set-Disk -IsReadOnly $false
-        $disk | Set-Disk -IsOffline $false
-        $disk | Clear-Disk -RemoveData -Confirm:$false
-        Initialize-Disk -Number $disk.Number -PartitionStyle GPT
+     # Always wipe Disk 0
+    $DiskNumber = 0
 
-        # Create EFI partition
-        New-Partition -DiskNumber $disk.Number -Size 100MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Format-Volume -FileSystem FAT32 -NewFileSystemLabel "System"
+    Write-Host "Clearing disk $DiskNumber including OEM partitions..."
+    Clear-Disk -Number $DiskNumber -RemoveData -RemoveOEM -Confirm:$false
 
-        # Create MSR partition
-        New-Partition -DiskNumber $disk.Number -Size 16MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}"
+    Initialize-Disk -Number $DiskNumber -PartitionStyle GPT -Confirm:$false
+    Set-Disk -Number $DiskNumber -IsOffline $false
+    Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-        # Create OS partition
-        $osPartition = New-Partition -DiskNumber $disk.Number -UseMaximumSize -AssignDriveLetter
-        Format-Volume -Partition $osPartition -FileSystem NTFS -NewFileSystemLabel "Windows"
+    $ESP = New-Partition -DiskNumber $DiskNumber -Size 260MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
+    Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
+    $ESP | Set-Partition -NewDriveLetter S
+    Write-Host "EFI partition assigned to drive letter: S"
 
-        $osDriveLetter = ($osPartition | Get-Volume).DriveLetter
+    New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
+
+    $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
+    Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
+    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
+
+    Write-Host "Disk prepared successfully. Windows partition is now C:."
     }
 
     # Apply Windows image
