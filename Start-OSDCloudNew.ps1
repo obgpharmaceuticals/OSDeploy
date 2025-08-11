@@ -42,7 +42,6 @@ try {
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
 
     Write-Host "Disk prepared successfully. Windows partition is now C:."
-    }
 
     # Apply Windows image
     $imageUrl = "http://10.1.192.20/install.wim"
