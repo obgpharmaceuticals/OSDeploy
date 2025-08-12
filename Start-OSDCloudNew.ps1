@@ -24,23 +24,35 @@ try {
     # Always wipe Disk 0
     $DiskNumber = 0
 
-    Write-Host "Clearing disk $DiskNumber including OEM partitions..."
-    Clear-Disk -Number $DiskNumber -RemoveData -RemoveOEM -Confirm:$false
+    # Detect NVMe disk automatically by FriendlyName containing "NVMe"
+$Disk = Get-Disk | Where-Object { $_.FriendlyName -like "*NVMe*" -and $_.OperationalStatus -eq "Online" } | Select-Object -First 1
 
-    Initialize-Disk -Number $DiskNumber -PartitionStyle GPT -Confirm:$false
-    Set-Disk -Number $DiskNumber -IsOffline $false
-    Set-Disk -Number $DiskNumber -IsReadOnly $false
+if (-not $Disk) {
+    Write-Error "NVMe disk not found."
+    exit 1
+}
 
-    $ESP = New-Partition -DiskNumber $DiskNumber -Size 512MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
-    Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
-    $ESP | Set-Partition -NewDriveLetter S
-    Write-Host "EFI partition assigned to drive letter: S"
+$DiskNumber = $Disk.Number
+Write-Host "Using NVMe disk number: $DiskNumber"
 
-    New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
+Clear-Disk -Number $DiskNumber -RemoveData -RemoveOEM -Confirm:$false
+Initialize-Disk -Number $DiskNumber -PartitionStyle GPT -Confirm:$false
+Set-Disk -Number $DiskNumber -IsOffline $false
+Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
-    Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
-    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
+# Create 512MB EFI System Partition
+$ESP = New-Partition -DiskNumber $DiskNumber -Size 512MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
+Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
+$ESP | Set-Partition -NewDriveLetter S
+Write-Host "EFI partition assigned to drive letter: S"
+
+# Create 128MB MSR partition
+New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
+
+# Create Windows partition using the rest of the disk
+$OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
+Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
+Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
 
     Write-Host "Disk prepared successfully. Windows partition is now C:."
 
