@@ -31,7 +31,7 @@ try {
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    $ESP = New-Partition -DiskNumber $DiskNumber -Size 260MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
+    $ESP = New-Partition -DiskNumber $DiskNumber -Size 512MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
     $ESP | Set-Partition -NewDriveLetter S
     Write-Host "EFI partition assigned to drive letter: S"
