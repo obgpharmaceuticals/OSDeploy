@@ -24,37 +24,37 @@ try {
     # Always wipe Disk 0
     $DiskNumber = 0
 
-    # Detect NVMe disk automatically by FriendlyName containing "NVMe"
-$Disk = Get-Disk | Where-Object { $_.FriendlyName -like "*NVMe*" -and $_.OperationalStatus -eq "Online" } | Select-Object -First 1
+    # Find the first disk that is online, fixed, and has the largest size (usually your boot disk)
+$Disk = Get-Disk | Where-Object { $_.IsSystem -eq $false -and $_.OperationalStatus -eq "Online" -and $_.BusType -in @("NVMe", "SATA", "SCSI", "ATA") } | Sort-Object -Property Size -Descending | Select-Object -First 1
 
 if (-not $Disk) {
-    Write-Error "NVMe disk not found."
+    Write-Error "No suitable disk found for installation."
     exit 1
 }
 
 $DiskNumber = $Disk.Number
-Write-Host "Using NVMe disk number: $DiskNumber"
+Write-Host "Selected disk number $DiskNumber ($($Disk.FriendlyName)) with BusType $($Disk.BusType)"
 
 Clear-Disk -Number $DiskNumber -RemoveData -RemoveOEM -Confirm:$false
 Initialize-Disk -Number $DiskNumber -PartitionStyle GPT -Confirm:$false
 Set-Disk -Number $DiskNumber -IsOffline $false
 Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-# Create 512MB EFI System Partition
+# EFI partition size 512MB (safe for all modern firmware)
 $ESP = New-Partition -DiskNumber $DiskNumber -Size 512MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
 Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
 $ESP | Set-Partition -NewDriveLetter S
 Write-Host "EFI partition assigned to drive letter: S"
 
-# Create 128MB MSR partition
+# MSR partition 128MB
 New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
 
-# Create Windows partition using the rest of the disk
+# OS partition fills the rest of the disk
 $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
 Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
 Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
 
-    Write-Host "Disk prepared successfully. Windows partition is now C:."
+Write-Host "Disk $DiskNumber partitioned successfully."
 
     Write-Host "Waiting for network connectivity..."
     for ($i = 0; $i -lt 30; $i++) {
