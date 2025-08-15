@@ -25,36 +25,36 @@ try {
     $DiskNumber = 0
 
     # Find the first disk that is online, fixed, and has the largest size (usually your boot disk)
-    $Disk = Get-Disk | Where-Object { $_.IsSystem -eq $false -and $_.OperationalStatus -eq "Online" -and $_.BusType -in @("NVMe", "SATA", "SCSI", "ATA") } | Sort-Object -Property Size -Descending | Select-Object -First 1
+$Disk = Get-Disk | Where-Object { $_.IsSystem -eq $false -and $_.OperationalStatus -eq "Online" -and $_.BusType -in @("NVMe", "SATA", "SCSI", "ATA") } | Sort-Object -Property Size -Descending | Select-Object -First 1
 
-    if (-not $Disk) {
-        Write-Error "No suitable disk found for installation."
-        exit 1
-    }
+if (-not $Disk) {
+    Write-Error "No suitable disk found for installation."
+    exit 1
+}
 
-    $DiskNumber = $Disk.Number
-    Write-Host "Selected disk number $DiskNumber ($($Disk.FriendlyName)) with BusType $($Disk.BusType)"
+$DiskNumber = $Disk.Number
+Write-Host "Selected disk number $DiskNumber ($($Disk.FriendlyName)) with BusType $($Disk.BusType)"
 
-    Clear-Disk -Number $DiskNumber -RemoveData -RemoveOEM -Confirm:$false
-    Initialize-Disk -Number $DiskNumber -PartitionStyle GPT -Confirm:$false
-    Set-Disk -Number $DiskNumber -IsOffline $false
-    Set-Disk -Number $DiskNumber -IsReadOnly $false
+Clear-Disk -Number $DiskNumber -RemoveData -RemoveOEM -Confirm:$false
+Initialize-Disk -Number $DiskNumber -PartitionStyle GPT -Confirm:$false
+Set-Disk -Number $DiskNumber -IsOffline $false
+Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    # EFI partition size 512MB (safe for all modern firmware)
-    $ESP = New-Partition -DiskNumber $DiskNumber -Size 512MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
-    Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
-    $ESP | Set-Partition -NewDriveLetter S
-    Write-Host "EFI partition assigned to drive letter: S"
+# EFI partition size 512MB (safe for all modern firmware)
+$ESP = New-Partition -DiskNumber $DiskNumber -Size 512MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
+Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
+$ESP | Set-Partition -NewDriveLetter S
+Write-Host "EFI partition assigned to drive letter: S"
 
-    # MSR partition 128MB
-    New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
+# MSR partition 128MB
+New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
 
-    # OS partition fills the rest of the disk
-    $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
-    Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
-    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
+# OS partition fills the rest of the disk
+$OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
+Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
+Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
 
-    Write-Host "Disk $DiskNumber partitioned successfully."
+Write-Host "Disk $DiskNumber partitioned successfully."
 
     Write-Host "Waiting for network connectivity..."
     for ($i = 0; $i -lt 30; $i++) {
@@ -158,6 +158,18 @@ try {
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
+    # >>> ADDED: also place copies in legacy pickup path to help early ESP reads on some Win11 builds
+    try {
+        $LegacyAutoPilotDir = "C:\Windows\Provisioning\Autopilot"
+        if (-not (Test-Path $LegacyAutoPilotDir)) { New-Item -Path $LegacyAutoPilotDir -ItemType Directory -Force | Out-Null }
+        Copy-Item -Path "$AutopilotFolder\AutopilotConfigurationFile.json" -Destination "$LegacyAutoPilotDir\AutopilotConfigurationFile.json" -Force
+        Copy-Item -Path "$AutopilotFolder\OOBE.json" -Destination "$LegacyAutoPilotDir\OOBE.json" -Force
+        Write-Host "Copied Autopilot JSONs to legacy path for early pickup."
+    } catch {
+        Write-Warning "Could not copy Autopilot files to legacy path: $_"
+    }
+    # <<< ADDED
+
     $UnattendXml = @"
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
@@ -204,9 +216,6 @@ set LOGFILE=C:\Autopilot-Diag.txt
 set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
 set GROUPTAG=$GroupTag
 
-REM Detection key for Intune System-context install
-reg add "HKLM\SOFTWARE\OBG\DeployFlags" /v "$GroupTag" /t REG_SZ /d "Installed" /f
-
 echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
 echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 
@@ -238,6 +247,18 @@ exit /b 0
     Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
 
     Write-Host "SetupComplete.cmd created successfully."
+
+    # >>> ADDED: set a simple requirement/delay flag so your Win32 app only attempts once prep is complete
+    try {
+        New-Item -Path "HKLM:\SOFTWARE\OBG" -ErrorAction SilentlyContinue | Out-Null
+        New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
+        New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
+        Write-Host "Wrote HKLM\SOFTWARE\OBG\Signals\ReadyForWin32 = 1 (use as Intune requirement rule)."
+    } catch {
+        Write-Warning "Failed to write ReadyForWin32 requirement flag: $_"
+    }
+    # <<< ADDED
+
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     Restart-Computer -Force
