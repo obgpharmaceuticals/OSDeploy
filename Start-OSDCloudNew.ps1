@@ -242,7 +242,8 @@ echo Waiting 300 seconds (5 minutes) to ensure upload finishes and prevent reboo
 timeout /t 300 /nobreak > nul
 
 echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
-exit /b 0
+echo Running Sysprep reseal... >> %LOGFILE%
+%WINDIR%\System32\Sysprep\Sysprep.exe /oobe /generalize /quiet /reboot
 "@
     Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
 
