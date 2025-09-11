@@ -153,7 +153,7 @@ Write-Host "Disk $DiskNumber partitioned successfully."
         RemovePreInstalledApps        = @(
             "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
             "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
-            "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder"
+            "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder", "Microsoft.OutlookForWindows", "Microsoft.Office.Desktop"
         )
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
