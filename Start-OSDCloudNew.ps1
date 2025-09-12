@@ -55,10 +55,8 @@ Format-Volume -Partition $RecoveryPartition -FileSystem NTFS -NewFileSystemLabel
 $RecoveryPartition | Set-Partition -NewDriveLetter R
 Write-Host "Recovery partition created and assigned R:"
 
-# OS partition fills the rest of the disk minus 1GB for recovery
-$DiskSize = (Get-Disk -Number $DiskNumber).Size
-$OSSize   = $DiskSize - 512MB - 128MB - 1GB
-$OSPartition = New-Partition -DiskNumber $DiskNumber -Size $OSSize
+# OS partition fills the rest of the disk
+$OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
 Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
 Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
 
