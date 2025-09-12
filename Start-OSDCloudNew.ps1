@@ -49,17 +49,10 @@ Write-Host "EFI partition assigned to drive letter: S"
 # MSR partition 128MB
 New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
 
-# Recovery partition 1GB
-$RecoveryPartition = New-Partition -DiskNumber $DiskNumber -Size 1GB -GptType "{DE94BBA4-06D1-4D40-A16A-BFD50179D6AC}"
-Format-Volume -Partition $RecoveryPartition -FileSystem NTFS -NewFileSystemLabel "Recovery" -Confirm:$false
-$RecoveryPartition | Set-Partition -NewDriveLetter R
-Write-Host "Recovery partition created and assigned R:"
-
 # OS partition fills the rest of the disk
 $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
 Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
 Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
-
 
 Write-Host "Disk $DiskNumber partitioned successfully."
 
