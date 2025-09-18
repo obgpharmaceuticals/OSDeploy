@@ -25,48 +25,64 @@ try {
     $DiskNumber = 0
 
     # Find the first disk that is online, fixed, and has the largest size (usually your boot disk)
-$Disk = Get-Disk | Where-Object { $_.IsSystem -eq $false -and $_.OperationalStatus -eq "Online" -and $_.BusType -in @("NVMe", "SATA", "SCSI", "ATA") } | Sort-Object -Property Size -Descending | Select-Object -First 1
+    $Disk = Get-Disk | Where-Object { $_.IsSystem -eq $false -and $_.OperationalStatus -eq "Online" -and $_.BusType -in @("NVMe", "SATA", "SCSI", "ATA") } | Sort-Object -Property Size -Descending | Select-Object -First 1
 
-if (-not $Disk) {
-    Write-Error "No suitable disk found for installation."
-    exit 1
-}
-
-$DiskNumber = $Disk.Number
-Write-Host "Selected disk number $DiskNumber ($($Disk.FriendlyName)) with BusType $($Disk.BusType)"
-
-Clear-Disk -Number $DiskNumber -RemoveData -RemoveOEM -Confirm:$false
-Initialize-Disk -Number $DiskNumber -PartitionStyle GPT -Confirm:$false
-Set-Disk -Number $DiskNumber -IsOffline $false
-Set-Disk -Number $DiskNumber -IsReadOnly $false
-
-# EFI partition size 512MB (safe for all modern firmware)
-$ESP = New-Partition -DiskNumber $DiskNumber -Size 512MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
-Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
-$ESP | Set-Partition -NewDriveLetter S
-Write-Host "EFI partition assigned to drive letter: S"
-
-# MSR partition 128MB
-New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
-
-# OS partition fills the rest of the disk
-$OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
-Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
-Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
-
-Write-Host "Disk $DiskNumber partitioned successfully."
-
-    Write-Host "Waiting for network connectivity..."
-    for ($i = 0; $i -lt 30; $i++) {
-        if (Test-Connection -ComputerName 10.1.192.20 -Count 1 -Quiet) {
-            Write-Host "Network is available."
-            break
-        }
-        Start-Sleep -Seconds 2
-        if ($i -eq 29) { throw "Network not available after timeout." }
+    if (-not $Disk) {
+        Write-Error "No suitable disk found for installation."
+        exit 1
     }
 
-    $NetworkPath = "\\10.1.192.20\ReadOnlyShare"
+    $DiskNumber = $Disk.Number
+    Write-Host "Selected disk number $DiskNumber ($($Disk.FriendlyName)) with BusType $($Disk.BusType)"
+
+    Clear-Disk -Number $DiskNumber -RemoveData -RemoveOEM -Confirm:$false
+    Initialize-Disk -Number $DiskNumber -PartitionStyle GPT -Confirm:$false
+    Set-Disk -Number $DiskNumber -IsOffline $false
+    Set-Disk -Number $DiskNumber -IsReadOnly $false
+
+    # EFI partition size 512MB (safe for all modern firmware)
+    $ESP = New-Partition -DiskNumber $DiskNumber -Size 512MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
+    Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
+    $ESP | Set-Partition -NewDriveLetter S
+    Write-Host "EFI partition assigned to drive letter: S"
+
+    # MSR partition 128MB
+    New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
+
+    # OS partition fills the rest of the disk
+    $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
+    Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
+    Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
+
+    Write-Host "Disk $DiskNumber partitioned successfully."
+
+    # --- Determine deployment server based on client subnet ---
+    $ClientIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike "169.*" -and $_.IPAddress -ne "127.0.0.1" } | Select-Object -First 1).IPAddress
+																		
+											  
+				 
+    if (-not $ClientIP) { throw "Could not determine client IP address." }
+
+    Write-Host "Client IP detected: $ClientIP"
+
+    # Define subnet to deployment server mapping
+    $DeploymentServers = @{
+        "10.1.192" = "10.1.192.20"
+        "10.3.192" = "10.3.192.20"
+        "10.5.192" = "10.5.192.20"
+    }
+
+    # Extract first three octets of client IP
+    $Subnet = ($ClientIP -split "\.")[0..2] -join "."
+
+    if ($DeploymentServers.ContainsKey($Subnet)) {
+        $ServerIP = $DeploymentServers[$Subnet]
+        Write-Host "Deployment server selected: $ServerIP"
+    } else {
+        throw "No deployment server configured for subnet $Subnet"
+    }
+
+    $NetworkPath = "\\$ServerIP\ReadOnlyShare"
     $DriveLetter = "M:"
     net use $DriveLetter /delete /yes > $null 2>&1
     Write-Host "Mapping $DriveLetter to $NetworkPath..."
@@ -75,7 +91,7 @@ Write-Host "Disk $DiskNumber partitioned successfully."
         throw "Failed to map $DriveLetter to $NetworkPath. Error details: $mapResult"
     }
 
-    $WimPath = "M:\install.wim"
+    $WimPath = "m:\install.wim"
     if (-not (Test-Path $WimPath)) {
         throw "WIM file not found at $WimPath"
     }
