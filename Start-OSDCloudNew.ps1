@@ -56,14 +56,16 @@ try {
 
     Write-Host "Disk $DiskNumber partitioned successfully."
 
-    # --- Determine deployment server based on client subnet ---
-    $ClientIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike "169.*" -and $_.IPAddress -ne "127.0.0.1" } | Select-Object -First 1).IPAddress
-																		
-											  
-				 
-    if (-not $ClientIP) { throw "Could not determine client IP address." }
+    # --- Determine client IP using WMI (WinPE compatible) ---
+	$ClientIP = (Get-WmiObject Win32_NetworkAdapterConfiguration | 
+             Where-Object { $_.IPEnabled -eq $true -and $_.IPAddress -ne $null } |
+             ForEach-Object { $_.IPAddress } |
+             Where-Object { $_ -notlike "169.*" -and $_ -ne "127.0.0.1" } |
+             Select-Object -First 1)
 
-    Write-Host "Client IP detected: $ClientIP"
+	if (-not $ClientIP) { throw "Could not determine client IP address." }
+
+	Write-Host "Client IP detected: $ClientIP"
 
     # Define subnet to deployment server mapping
     $DeploymentServers = @{
