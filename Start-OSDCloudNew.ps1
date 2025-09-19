@@ -103,6 +103,31 @@ try {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
 
+    # === NEW: Download and inject latest OEM drivers directly into C:\ offline image ===
+    Write-Host "Starting live driver download and injection..." -ForegroundColor Cyan
+    try {
+        if (-not (Get-Module -ListAvailable -Name OSD)) {
+            Install-Module -Name OSD -Force -Scope CurrentUser
+        }
+        Import-Module OSD
+
+        $ComputerModel  = (Get-MyComputerModel).Trim()
+        $ComputerVendor = (Get-MyComputerManufacturer).Trim()
+        Write-Host "Detected hardware: $ComputerVendor $ComputerModel"
+
+        # Download the latest driver pack from the OEM to C:\OSDDrivers
+        $DriverPath = Get-OSDCloudDriver -Model $ComputerModel -Destination "C:\OSDDrivers"
+        Write-Host "Driver package downloaded to $DriverPath"
+
+        # Inject drivers into the offline Windows image (C:\)
+        Invoke-OSDCloudDriver -Path "C:\" -DriverPath $DriverPath
+        Write-Host "Driver injection into offline image complete."
+    }
+    catch {
+        Write-Warning "Driver injection failed or model not supported: $_"
+    }
+    # === End driver injection section ===
+
     Write-Host "Disabling ZDP offline in the image..."
     reg load HKLM\TempHive C:\Windows\System32\config\SOFTWARE
     reg add "HKLM\TempHive\Microsoft\Windows\CurrentVersion\OOBE" /v DisableZDP /t REG_DWORD /d 1 /f
