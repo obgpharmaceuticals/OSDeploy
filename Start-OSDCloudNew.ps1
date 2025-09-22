@@ -84,20 +84,19 @@ try {
     # === OEM DRIVER DOWNLOAD & INJECTION (optional) ===
     Write-Host "Attempting to download and inject OEM drivers..." -ForegroundColor Cyan
     try {
-        if (-not (Get-Module -ListAvailable -Name OSDCloud)) {
-            Set-ExecutionPolicy Bypass -Scope Process -Force
-            Install-Module OSDCloud -Force -SkipPublisherCheck -AllowClobber -Scope AllUsers -ErrorAction Stop
-        }
-        Import-Module OSDCloud -Force
-        $DriverFolder = "C:\OSDDrivers"
-        $DriverPath = Get-OSDCloudDriverPack -Path $DriverFolder -Download -ErrorAction Stop
-        Write-Host "Driver pack downloaded to $DriverPath"
-        Add-WindowsDriver -Path "C:\" -Driver $DriverPath -Recurse -ForceUnsigned -ErrorAction Stop
-        Write-Host "Driver injection completed."
+    if (-not (Get-Module -ListAvailable -Name OSDCloud)) {
+        Set-ExecutionPolicy Bypass -Scope Process -Force
+        Install-Module OSDCloud -Force -SkipPublisherCheck -AllowClobber -Scope AllUsers -ErrorAction Stop
     }
-    catch {
-        Write-Warning "OSDCloud driver pack not available or injection failed. Continuing with Microsoft generic drivers..."
+    Import-Module OSDCloud -Force
+    $DriverFolder = "C:\OSDDrivers"
+    $DriverPath = Get-OSDCloudDriverPack -Path $DriverFolder -Download -ErrorAction Stop
+    Add-WindowsDriver -Path "C:\" -Driver $DriverPath -Recurse -ForceUnsigned -ErrorAction Stop
+    Write-Host "Driver injection completed."
+    } catch {
+    Write-Warning "Driver injection failed: $_. Continuing..."
     }
+
     # === End driver section ===
 
     # Disable ZDP offline
