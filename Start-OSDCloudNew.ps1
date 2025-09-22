@@ -85,7 +85,8 @@ try {
     Write-Host "Attempting to download and inject OEM drivers..." -ForegroundColor Cyan
     try {
         if (-not (Get-Module -ListAvailable -Name OSDCloud)) {
-            Install-Module OSDCloud -Force -SkipPublisherCheck
+            Set-ExecutionPolicy Bypass -Scope Process -Force
+            Install-Module OSDCloud -Force -SkipPublisherCheck -AllowClobber -Scope AllUsers -ErrorAction Stop
         }
         Import-Module OSDCloud -Force
         $DriverFolder = "C:\OSDDrivers"
