@@ -2,7 +2,7 @@
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
-    Write-Host "Starting Windows 11 OBG deployment..." -ForegroundColor Cyan
+    Write-Host "Starting Windows 11 deployment..." -ForegroundColor Cyan
 
     # Prompt for system type
     Write-Host "Select system type:"
@@ -58,10 +58,10 @@ try {
 
     # --- Determine client IP using WMI (WinPE compatible) ---
     $ClientIP = (Get-WmiObject Win32_NetworkAdapterConfiguration | 
-                 Where-Object { $_.IPEnabled -eq $true -and $_.IPAddress -ne $null } |
-                 ForEach-Object { $_.IPAddress } |
-                 Where-Object { $_ -notlike "169.*" -and $_ -ne "127.0.0.1" } |
-                 Select-Object -First 1)
+             Where-Object { $_.IPEnabled -eq $true -and $_.IPAddress -ne $null } |
+             ForEach-Object { $_.IPAddress } |
+             Where-Object { $_ -notlike "169.*" -and $_ -ne "127.0.0.1" } |
+             Select-Object -First 1)
 
     if (-not $ClientIP) { throw "Could not determine client IP address." }
 
@@ -103,27 +103,6 @@ try {
         throw "DISM failed with exit code $($dism.ExitCode)"
     }
 
-    # === Live driver download and injection (new) ===
-    try {
-        Write-Host "Installing OSD module and injecting vendor drivers..." -ForegroundColor Cyan
-        if (-not (Get-PackageProvider -Name NuGet -ErrorAction SilentlyContinue)) {
-            Install-PackageProvider -Name NuGet -Force
-        }
-        if (-not (Get-Module -ListAvailable -Name OSD)) {
-            Install-Module -Name OSD -Force -Scope CurrentUser
-        }
-        Import-Module OSD -Force
-
-        $Model = (Get-CimInstance Win32_ComputerSystem).Model
-        Write-Host "Detected model: $Model"
-        Start-OSDDriverPack -Model $Model -Download -Inject -Path 'C:\'
-        Write-Host "Driver download and injection completed."
-    }
-    catch {
-        Write-Warning "Driver injection failed or model not supported: $_"
-    }
-    # === End driver injection ===
-
     Write-Host "Disabling ZDP offline in the image..."
     reg load HKLM\TempHive C:\Windows\System32\config\SOFTWARE
     reg add "HKLM\TempHive\Microsoft\Windows\CurrentVersion\OOBE" /v DisableZDP /t REG_DWORD /d 1 /f
@@ -154,6 +133,21 @@ try {
     }
     Copy-Item -Path "S:\EFI\Microsoft\Boot\bootmgfw.efi" -Destination "S:\EFI\Boot\bootx64.efi" -Force
     Write-Host "Boot files created successfully."
+
+    # ---------- OSDCloud driver injection ----------
+    try {
+        Write-Host "Installing OSDCloud module and injecting vendor drivers..." -ForegroundColor Cyan
+        if (-not (Get-Module -ListAvailable -Name OSDCloud)) {
+            Install-Module OSDCloud -Force -Scope CurrentUser
+        }
+        Import-Module OSDCloud -Force
+        Start-OSDCloudDriver -Path 'C:\'
+        Write-Host "Driver download and injection completed successfully."
+    }
+    catch {
+        Write-Warning "OSDCloud driver injection failed or model not supported: $_"
+    }
+    # ---------- End OSDCloud driver injection ----------
 
     $TargetFolders = @(
         "C:\Windows\Panther\Unattend",
@@ -197,6 +191,7 @@ try {
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
+    # >>> ADDED: also place copies in legacy pickup path to help early ESP reads on some Win11 builds
     try {
         $LegacyAutoPilotDir = "C:\Windows\Provisioning\Autopilot"
         if (-not (Test-Path $LegacyAutoPilotDir)) { New-Item -Path $LegacyAutoPilotDir -ItemType Directory -Force | Out-Null }
@@ -206,6 +201,7 @@ try {
     } catch {
         Write-Warning "Could not copy Autopilot files to legacy path: $_"
     }
+    # <<< ADDED
 
     $UnattendXml = @"
 <?xml version="1.0" encoding="utf-8"?>
@@ -245,6 +241,7 @@ try {
         Write-Warning "Failed to download Autopilot script: $_"
     }
 
+    # SetupComplete.cmd for running Autopilot upload and logging
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
 @echo off
@@ -285,6 +282,7 @@ echo Running Sysprep reseal... >> %LOGFILE%
 
     Write-Host "SetupComplete.cmd created successfully."
 
+    # >>> ADDED: set a simple requirement/delay flag so your Win32 app only attempts once prep is complete
     try {
         New-Item -Path "HKLM:\SOFTWARE\OBG" -ErrorAction SilentlyContinue | Out-Null
         New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
@@ -293,6 +291,7 @@ echo Running Sysprep reseal... >> %LOGFILE%
     } catch {
         Write-Warning "Failed to write ReadyForWin32 requirement flag: $_"
     }
+    # <<< ADDED
 
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
