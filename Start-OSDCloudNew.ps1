@@ -2,7 +2,7 @@
 Start-Transcript -Path "X:\DeployScript.log"
 
 try {
-    Write-Host "Starting Windows 11 OBG deployment..." -ForegroundColor Cyan
+    Write-Host "Starting OBG Windows 11 deployment..." -ForegroundColor Cyan
 
     # Prompt for system type
     Write-Host "Select system type:"
