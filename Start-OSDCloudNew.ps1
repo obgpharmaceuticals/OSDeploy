@@ -1,8 +1,8 @@
-# Start transcript logging 
+# Start transcript logging
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
-    Write-Host "Starting OBG Windows 11 deployment..." -ForegroundColor Cyan
+    Write-Host "Starting Windows 11 OBG deployment..." -ForegroundColor Cyan
 
     # Prompt for system type
     Write-Host "Select system type:"
@@ -22,12 +22,11 @@ try {
     Write-Host "GroupTag set to: $GroupTag"
 
     # Always wipe Disk 0
-    $Disk = Get-Disk | Where-Object {
-        $_.IsSystem -eq $false -and $_.OperationalStatus -eq "Online" -and
-        $_.BusType -in @("NVMe","SATA","SCSI","ATA")
-    } | Sort-Object -Property Size -Descending | Select-Object -First 1
-    if (-not $Disk) { throw "No suitable disk found for installation." }
+    $DiskNumber = 0
 
+    # Find first suitable disk
+    $Disk = Get-Disk | Where-Object { $_.IsSystem -eq $false -and $_.OperationalStatus -eq "Online" -and $_.BusType -in @("NVMe", "SATA", "SCSI", "ATA") } | Sort-Object -Property Size -Descending | Select-Object -First 1
+    if (-not $Disk) { Write-Error "No suitable disk found."; exit 1 }
     $DiskNumber = $Disk.Number
     Write-Host "Selected disk number $DiskNumber ($($Disk.FriendlyName)) with BusType $($Disk.BusType)"
 
@@ -36,26 +35,30 @@ try {
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    # EFI + MSR + OS partitions
+    # Partitioning
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 512MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
     $ESP | Set-Partition -NewDriveLetter S
+    Write-Host "EFI partition assigned to S"
+
     New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
+
     $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
     Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
+
     Write-Host "Disk $DiskNumber partitioned successfully."
 
-    # --- Determine client IP (WinPE compatible) ---
-    $ClientIP = (Get-WmiObject Win32_NetworkAdapterConfiguration |
-                 Where-Object { $_.IPEnabled -eq $true -and $_.IPAddress } |
-                 ForEach-Object { $_.IPAddress } |
-                 Where-Object { $_ -notlike "169.*" -and $_ -ne "127.0.0.1" } |
-                 Select-Object -First 1)
+    # Determine client IP
+    $ClientIP = (Get-WmiObject Win32_NetworkAdapterConfiguration | 
+        Where-Object { $_.IPEnabled -eq $true -and $_.IPAddress -ne $null } |
+        ForEach-Object { $_.IPAddress } |
+        Where-Object { $_ -notlike "169.*" -and $_ -ne "127.0.0.1" } |
+        Select-Object -First 1)
     if (-not $ClientIP) { throw "Could not determine client IP address." }
     Write-Host "Client IP detected: $ClientIP"
 
-    # Deployment server selection
+    # Deployment server mapping
     $DeploymentServers = @{
         "10.1.192" = "10.1.192.20"
         "10.3.192" = "10.3.192.20"
@@ -67,50 +70,33 @@ try {
         Write-Host "Deployment server selected: $ServerIP"
     } else { throw "No deployment server configured for subnet $Subnet" }
 
-    # Map network share and apply image
     $NetworkPath = "\\$ServerIP\ReadOnlyShare"
     $DriveLetter = "M:"
     net use $DriveLetter /delete /yes > $null 2>&1
     Write-Host "Mapping $DriveLetter to $NetworkPath..."
     $mapResult = net use $DriveLetter $NetworkPath /persistent:no 2>&1
-    if ($LASTEXITCODE -ne 0) { throw "Failed to map $DriveLetter: $mapResult" }
+    if ($LASTEXITCODE -ne 0) { throw "Failed to map $DriveLetter to $NetworkPath. $mapResult" }
 
     $WimPath = "m:\install.wim"
     if (-not (Test-Path $WimPath)) { throw "WIM file not found at $WimPath" }
-    Write-Host "Applying Windows image from $WimPath to C:..."
-    $dism = Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image","/ImageFile:$WimPath","/Index:6","/ApplyDir:C:\" -Wait -PassThru
+    Write-Host "Applying Windows image..."
+    $dism = Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image", "/ImageFile:$WimPath", "/Index:6", "/ApplyDir:C:\" -Wait -PassThru
     if ($dism.ExitCode -ne 0) { throw "DISM failed with exit code $($dism.ExitCode)" }
 
-    # === OEM DRIVER DOWNLOAD & INJECTION (WinPE-safe) ===
-    Write-Host "Attempting to download and inject OEM drivers..." -ForegroundColor Cyan
+    # Safe OEM driver injection (won't break in WinPE)
     try {
-        $isWinPE = ($env:WINDIR -eq "X:\Windows") -or ($env:PROCESSOR_ARCHITECTURE -eq "x86")
-        if ($isWinPE) { Write-Host "Running in WinPE environment" }
+        $DriverFolder = "C:\OSDDrivers"
+        if (-not (Test-Path $DriverFolder)) { New-Item -Path $DriverFolder -ItemType Directory -Force }
 
         if (Get-Module -ListAvailable -Name OSDCloud) {
-            try {
-                Import-Module OSDCloud -Force -ErrorAction Stop
-                $DriverFolder = "C:\OSDDrivers"
-
-                try {
-                    Write-Host "Downloading driver pack to $DriverFolder..."
-                    $DriverPath = Get-OSDCloudDriverPack -Path $DriverFolder -Download -ErrorAction Stop
-
-                    Write-Host "Injecting drivers into C:\..."
-                    Add-WindowsDriver -Path "C:\" -Driver $DriverPath -Recurse -ForceUnsigned -ErrorAction Stop
-                    Write-Host "Driver injection completed successfully."
-                } catch {
-                    Write-Warning "Driver injection failed: $_. Continuing deployment..."
-                }
-            } catch {
-                Write-Warning "Failed to import OSDCloud module: $_. Skipping driver injection."
-            }
+            Import-Module OSDCloud -Force
+            $DriverPath = Get-OSDCloudDriverPack -Path $DriverFolder -Download -ErrorAction Stop
+            Add-WindowsDriver -Path "C:\" -Driver $DriverPath -Recurse -ForceUnsigned -ErrorAction Stop
+            Write-Host "Driver injection completed."
         } else {
-            Write-Warning "OSDCloud module not found. Skipping driver injection."
+            Write-Warning "OSDCloud module not available; skipping driver injection."
         }
-    } catch {
-        Write-Warning "Driver section skipped due to unexpected error: $_"
-    }
+    } catch { Write-Warning "Driver injection failed: $_. Continuing..." }
 
     # Disable ZDP offline
     reg load HKLM\TempHive C:\Windows\System32\config\SOFTWARE
@@ -119,31 +105,17 @@ try {
     Write-Host "ZDP disabled."
 
     # Boot files
-    if (-not (Test-Path "C:\Windows\Boot\EFI\bootmgfw.efi")) {
-        Write-Warning "Boot files missing. Trying to proceed anyway..."
-    }
-    if (-not (Test-Path "S:\EFI\Microsoft\Boot")) {
-        New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null
-    }
-    Write-Host "Running bcdboot to create UEFI boot entry..."
+    if (-not (Test-Path "S:\EFI\Microsoft\Boot")) { New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null }
+    Write-Host "Running bcdboot..."
     $bcdResult = bcdboot C:\Windows /s S: /f UEFI
     Write-Host $bcdResult
-    if (-not (Test-Path "S:\EFI\Microsoft\Boot\bootmgfw.efi")) {
-        throw "bcdboot failed to write boot files. Disk will not boot."
-    }
-    if (-not (Test-Path "S:\EFI\Boot")) {
-        New-Item -Path "S:\EFI\Boot" -ItemType Directory -Force | Out-Null
-    }
+    if (-not (Test-Path "S:\EFI\Microsoft\Boot\bootmgfw.efi")) { throw "bcdboot failed" }
+    if (-not (Test-Path "S:\EFI\Boot")) { New-Item -Path "S:\EFI\Boot" -ItemType Directory -Force | Out-Null }
     Copy-Item -Path "S:\EFI\Microsoft\Boot\bootmgfw.efi" -Destination "S:\EFI\Boot\bootx64.efi" -Force
-    Write-Host "Boot files created successfully."
+    Write-Host "Boot files created."
 
-    # --- Autopilot & OOBE configuration ---
-    $TargetFolders = @(
-        "C:\Windows\Panther\Unattend",
-        "C:\Windows\Setup\Scripts",
-        "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot",
-        "C:\Autopilot"
-    )
+    # Prepare Autopilot folders and JSONs
+    $TargetFolders = @("C:\Windows\Panther\Unattend","C:\Windows\Setup\Scripts","C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot","C:\Autopilot")
     foreach ($Folder in $TargetFolders) { if (-not (Test-Path $Folder)) { New-Item -Path $Folder -ItemType Directory -Force | Out-Null } }
 
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
@@ -167,21 +139,17 @@ try {
         SkipUserStatusPage            = $false
         SkipAccountSetup              = $false
         SkipOOBE                      = $false
-        RemovePreInstalledApps        = @(
-            "Microsoft.ZuneMusic","Microsoft.XboxApp","Microsoft.XboxGameOverlay",
-            "Microsoft.XboxGamingOverlay","Microsoft.XboxSpeechToTextOverlay",
-            "Microsoft.YourPhone","Microsoft.Getstarted","Microsoft.3DBuilder"
-        )
+        RemovePreInstalledApps        = @("Microsoft.ZuneMusic","Microsoft.XboxApp","Microsoft.XboxGameOverlay","Microsoft.XboxGamingOverlay","Microsoft.XboxSpeechToTextOverlay","Microsoft.YourPhone","Microsoft.Getstarted","Microsoft.3DBuilder")
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
+    # Copy to legacy path
     try {
         $LegacyAutoPilotDir = "C:\Windows\Provisioning\Autopilot"
         if (-not (Test-Path $LegacyAutoPilotDir)) { New-Item -Path $LegacyAutoPilotDir -ItemType Directory -Force | Out-Null }
         Copy-Item "$AutopilotFolder\AutopilotConfigurationFile.json" "$LegacyAutoPilotDir\" -Force
         Copy-Item "$AutopilotFolder\OOBE.json" "$LegacyAutoPilotDir\" -Force
-        Write-Host "Copied Autopilot JSONs to legacy path."
-    } catch { Write-Warning "Could not copy Autopilot files to legacy path: $_" }
+    } catch { Write-Warning "Could not copy Autopilot JSONs to legacy path: $_" }
 
     # Unattend.xml
     $UnattendXml = @"
@@ -212,51 +180,57 @@ try {
 "@
     Set-Content -Path "C:\Windows\Panther\Unattend\Unattend.xml" -Value $UnattendXml -Encoding UTF8
 
-    # Autopilot upload script & SetupComplete
+    # Download Autopilot script
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
-    Invoke-WebRequest -Uri "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1" -OutFile $AutoPilotScriptPath -UseBasicParsing -ErrorAction SilentlyContinue
+    $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
+    try { Invoke-WebRequest -Uri $AutoPilotScriptURL -OutFile $AutoPilotScriptPath -UseBasicParsing -ErrorAction Stop; Write-Host "Downloaded Autopilot script." } 
+    catch { Write-Warning "Failed to download Autopilot script: $_" }
 
+    # SetupComplete.cmd
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
 @echo off
 set LOGFILE=C:\Autopilot-Diag.txt
 set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
 set GROUPTAG=$GroupTag
+
 echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
 echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 timeout /t 10 > nul
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^ 
-  "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^ 
-   Install-PackageProvider -Name NuGet -Force -Scope AllUsers -Confirm:$false; ^ 
-   if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) { ^ 
-       Register-PSRepository -Name PSGallery -SourceLocation 'https://www.powershellgallery.com/api/v2' -InstallationPolicy Trusted ^ 
-   } else { ^ 
-       Set-PSRepository -Name PSGallery -InstallationPolicy Trusted ^ 
-   }" >> %LOGFILE% 2>&1
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^
+    Install-PackageProvider -Name NuGet -Force -Scope AllUsers -Confirm:$false; ^
+    if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) { ^
+        Register-PSRepository -Name PSGallery -SourceLocation 'https://www.powershellgallery.com/api/v2' -InstallationPolicy Trusted ^
+    } else { ^
+        Set-PSRepository -Name PSGallery -InstallationPolicy Trusted ^
+    }" >> %LOGFILE% 2>&1
+
 if exist "%SCRIPT%" (
     powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "%GROUPTAG%" -Online -Assign >> %LOGFILE% 2>&1
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
+
+echo Waiting 300 seconds to ensure upload finishes >> %LOGFILE%
 timeout /t 300 /nobreak > nul
 echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
 "@
     Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
     Write-Host "SetupComplete.cmd created successfully."
 
+    # ReadyForWin32 flag
     try {
-        New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -Force | Out-Null
+        New-Item -Path "HKLM:\SOFTWARE\OBG" -ErrorAction SilentlyContinue | Out-Null
+        New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
         New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
-        Write-Host "Wrote HKLM\SOFTWARE\OBG\Signals\ReadyForWin32 = 1"
-    } catch { Write-Warning "Failed to write ReadyForWin32 requirement flag: $_" }
+        Write-Host "Wrote ReadyForWin32 flag."
+    } catch { Write-Warning "Failed to write ReadyForWin32 flag: $_" }
 
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     # Restart-Computer -Force
 }
-catch {
-    Write-Error "Deployment failed: $_"
-}
-finally {
-    try { Stop-Transcript } catch {}
-}
+catch { Write-Error "Deployment failed: $_" }
+finally { try { Stop-Transcript } catch {} }
