@@ -1,5 +1,5 @@
 # Start transcript logging 
-Start-Transcript -Path "X:\DeployScript.log" -Append
+Start-Transcript -Path "X:\DeployScript.log"
 
 try {
     Write-Host "Starting Windows 11 OBG deployment..." -ForegroundColor Cyan
