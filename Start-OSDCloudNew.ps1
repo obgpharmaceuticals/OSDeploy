@@ -2,7 +2,7 @@
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
-    Write-Host "Starting OBG11 Windows 11 deployment..." -ForegroundColor Cyan
+    Write-Host "Starting OBG Windows 11 deployment..." -ForegroundColor Cyan
 
     # Prompt for system type
     Write-Host "Select system type:"
@@ -81,32 +81,36 @@ try {
     $dism = Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image","/ImageFile:$WimPath","/Index:6","/ApplyDir:C:\" -Wait -PassThru
     if ($dism.ExitCode -ne 0) { throw "DISM failed with exit code $($dism.ExitCode)" }
 
-    # === OEM DRIVER DOWNLOAD & INJECTION (safe for WinPE) ===
+    # === OEM DRIVER DOWNLOAD & INJECTION (WinPE-safe) ===
     Write-Host "Attempting to download and inject OEM drivers..." -ForegroundColor Cyan
     try {
-        if (-not (Get-Module -ListAvailable -Name OSDCloud)) {
-            Set-ExecutionPolicy Bypass -Scope Process -Force
-            try {
-                Install-Module OSDCloud -Force -SkipPublisherCheck -AllowClobber -Scope AllUsers
-            } catch {
-                Write-Warning "Could not install OSDCloud module: $_. Continuing without driver injection..."
-            }
-        }
-        Import-Module OSDCloud -Force -ErrorAction SilentlyContinue
+        $isWinPE = ($env:WINDIR -eq "X:\Windows") -or ($env:PROCESSOR_ARCHITECTURE -eq "x86")
+        if ($isWinPE) { Write-Host "Running in WinPE environment" }
 
-        $DriverFolder = "C:\OSDDrivers"
-        try {
-            $DriverPath = Get-OSDCloudDriverPack -Path $DriverFolder -Download
-            Add-WindowsDriver -Path "C:\" -Driver $DriverPath -Recurse -ForceUnsigned
-            Write-Host "Driver injection completed."
-        } catch {
-            Write-Warning "Driver injection failed: $_. Continuing deployment..."
+        if (Get-Module -ListAvailable -Name OSDCloud) {
+            try {
+                Import-Module OSDCloud -Force -ErrorAction Stop
+                $DriverFolder = "C:\OSDDrivers"
+
+                try {
+                    Write-Host "Downloading driver pack to $DriverFolder..."
+                    $DriverPath = Get-OSDCloudDriverPack -Path $DriverFolder -Download -ErrorAction Stop
+
+                    Write-Host "Injecting drivers into C:\..."
+                    Add-WindowsDriver -Path "C:\" -Driver $DriverPath -Recurse -ForceUnsigned -ErrorAction Stop
+                    Write-Host "Driver injection completed successfully."
+                } catch {
+                    Write-Warning "Driver injection failed: $_. Continuing deployment..."
+                }
+            } catch {
+                Write-Warning "Failed to import OSDCloud module: $_. Skipping driver injection."
+            }
+        } else {
+            Write-Warning "OSDCloud module not found. Skipping driver injection."
         }
     } catch {
-        Write-Warning "OSDCloud driver section skipped due to error: $_"
+        Write-Warning "Driver section skipped due to unexpected error: $_"
     }
-
-    # === End driver section ===
 
     # Disable ZDP offline
     reg load HKLM\TempHive C:\Windows\System32\config\SOFTWARE
@@ -221,7 +225,14 @@ set GROUPTAG=$GroupTag
 echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
 echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 timeout /t 10 > nul
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^"[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^Install-PackageProvider -Name NuGet -Force -Scope AllUsers -Confirm:$false; ^if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) { Register-PSRepository -Name PSGallery -SourceLocation 'https://www.powershellgallery.com/api/v2' -InstallationPolicy Trusted } else { Set-PSRepository -Name PSGallery -InstallationPolicy Trusted }" >> %LOGFILE% 2>&1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^ 
+  "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^ 
+   Install-PackageProvider -Name NuGet -Force -Scope AllUsers -Confirm:$false; ^ 
+   if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) { ^ 
+       Register-PSRepository -Name PSGallery -SourceLocation 'https://www.powershellgallery.com/api/v2' -InstallationPolicy Trusted ^ 
+   } else { ^ 
+       Set-PSRepository -Name PSGallery -InstallationPolicy Trusted ^ 
+   }" >> %LOGFILE% 2>&1
 if exist "%SCRIPT%" (
     powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "%GROUPTAG%" -Online -Assign >> %LOGFILE% 2>&1
 ) else (
