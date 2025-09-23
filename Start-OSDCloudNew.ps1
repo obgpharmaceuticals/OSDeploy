@@ -2,7 +2,7 @@
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
-    Write-Host "Starting Windows 11 OBG-deployment..." -ForegroundColor Cyan
+    Write-Host "Starting Windows 11 OBG deployment..." -ForegroundColor Cyan
 
     # Prompt for system type
     Write-Host "Select system type:"
@@ -208,10 +208,9 @@ try {
     }
 
     # ----------------------------
-    # SetupComplete.cmd
+    # SetupComplete.cmd (fixed)
     # ----------------------------
-    $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
-    $SetupCompleteContent = @"
+$SetupCompleteContent = @"
 @echo off
 REM ============================
 REM SetupComplete.cmd for Autopilot registration and driver injection
@@ -223,47 +222,40 @@ set GROUPTAG=$GroupTag
 echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
 echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 
-REM --- Wait 10 seconds to allow system init ---
 powershell.exe -NoProfile -Command "Start-Sleep -Seconds 10"
 
-REM --- PSGallery fix ---
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-"Try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^
-Install-PackageProvider -Name NuGet -Force -Scope AllUsers -Confirm:`$false; ^
-if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) { ^
-Register-PSRepository -Name PSGallery -SourceLocation 'https://www.powershellgallery.com/api/v2' -InstallationPolicy Trusted ^
-} else { ^
-Set-PSRepository -Name PSGallery -InstallationPolicy Trusted } } ^
-Catch { Add-Content -Path '%LOGFILE%' -Value ('PSGallery registration failed: ' + `$_.Exception.Message) }"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Try { 
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Install-PackageProvider -Name NuGet -Force -Scope AllUsers -Confirm:\$false
+    if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) { 
+        Register-PSRepository -Name PSGallery -SourceLocation 'https://www.powershellgallery.com/api/v2' -InstallationPolicy Trusted 
+    } else { 
+        Set-PSRepository -Name PSGallery -InstallationPolicy Trusted 
+    } 
+} Catch { Add-Content -Path '%LOGFILE%' -Value ('PSGallery registration failed: ' + \$_.Exception.Message) }"
 
-REM --- Autopilot registration ---
 if exist "%SCRIPT%" (
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "%GROUPTAG%" -Online -Assign >> %LOGFILE% 2>&1
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
 
-REM --- Driver injection ---
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-"Try { `
-Add-Content -Path '%LOGFILE%' -Value ('===== DRIVER INJECTION VIA WINDOWS UPDATE ===== Timestamp: ' + (Get-Date)); `
-Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSD\25.6.15.1\OSD.psm1' -ErrorAction Stop; `
-Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSDCloud\25.6.15.1\OSDCloud.psm1' -ErrorAction Stop; `
-$Model = (Get-CimInstance Win32_ComputerSystem).Model; `
-Add-Content -Path '%LOGFILE%' -Value ('Detected Model: ' + $Model); `
-Get-WindowsUpdateDriver -Path 'C:\' -Force -Verbose *> '%LOGFILE%'; `
-Add-Content -Path '%LOGFILE%' -Value 'Driver injection complete.' `
-} Catch { Add-Content -Path '%LOGFILE%' -Value ('Driver injection failed: ' + `$_.Exception.Message) }"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Try { 
+    Add-Content -Path '%LOGFILE%' -Value ('===== DRIVER INJECTION VIA WINDOWS UPDATE ===== Timestamp: ' + (Get-Date))
+    Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSD\25.6.15.1\OSD.psm1' -ErrorAction Stop
+    Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSDCloud\25.6.15.1\OSDCloud.psm1' -ErrorAction Stop
+    $Model = (Get-CimInstance Win32_ComputerSystem).Model
+    Add-Content -Path '%LOGFILE%' -Value ('Detected Model: ' + $Model)
+    Get-WindowsUpdateDriver -Path 'C:\' -Force -Verbose *> '%LOGFILE%'
+    Add-Content -Path '%LOGFILE%' -Value 'Driver injection complete.'
+} Catch { Add-Content -Path '%LOGFILE%' -Value ('Driver injection failed: ' + \$_.Exception.Message) }"
 
-REM Wait 5 minutes to ensure uploads complete
 powershell.exe -NoProfile -Command "Start-Sleep -Seconds 300"
 
 echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
-echo Running Sysprep reseal... >> %LOGFILE%
-REM %WINDIR%\System32\Sysprep\Sysprep.exe /oobe /generalize /quiet /reboot
 "@
-    Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
-    Write-Host "SetupComplete.cmd created successfully."
+Set-Content -Path "C:\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupCompleteContent -Encoding ASCII
+Write-Host "SetupComplete.cmd created successfully."
 
     # Write ReadyForWin32 flag
     try {
