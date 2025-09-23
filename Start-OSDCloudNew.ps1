@@ -285,7 +285,7 @@ echo Running Sysprep reseal... >> %LOGFILE%
 
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    # Restart-Computer -Force
+    Restart-Computer -Force
 
 }
 catch {
