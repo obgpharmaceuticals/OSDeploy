@@ -2,7 +2,7 @@
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
-    Write-Host "Starting Windows 11 OBG deployment..." -ForegroundColor Cyan
+    Write-Host "Starting OBG Windows 11 deployment..." -ForegroundColor Cyan
 
     # Prompt for system type
     Write-Host "Select system type:"
@@ -217,13 +217,14 @@ try {
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
+    # >>> UPDATED: Autopilot script download now dynamic based on subnet
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
-    $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
+    $AutoPilotScriptURL = "http://$ServerIP/Get-WindowsAutoPilotInfo.ps1"
     try {
         Invoke-WebRequest -Uri $AutoPilotScriptURL -OutFile $AutoPilotScriptPath -UseBasicParsing -ErrorAction Stop
-        Write-Host "Downloaded Get-WindowsAutoPilotInfo.ps1 successfully."
+        Write-Host "Downloaded Get-WindowsAutoPilotInfo.ps1 successfully from $AutoPilotScriptURL."
     } catch {
-        Write-Warning "Failed to download Autopilot script: $_"
+        Write-Warning "Failed to download Autopilot script from $AutoPilotScriptURL: $_"
     }
 
     # SetupComplete.cmd for running Autopilot upload, logging, and driver injection
