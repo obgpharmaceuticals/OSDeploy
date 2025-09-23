@@ -2,7 +2,7 @@
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
-    Write-Host "Starting OBG Windows 11 deployment..." -ForegroundColor Cyan
+    Write-Host "Starting Windows 11 deployment..." -ForegroundColor Cyan
 
     # Prompt for system type
     Write-Host "Select system type:"
@@ -40,7 +40,7 @@ try {
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    # EFI partition size 512MB (safe for all modern firmware)
+    # EFI partition size 512MB
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 512MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
     $ESP | Set-Partition -NewDriveLetter S
@@ -109,14 +109,8 @@ try {
     reg unload HKLM\TempHive
     Write-Host "ZDP has been disabled offline successfully."
 
-    if (-not (Test-Path "C:\Windows\Boot\EFI\bootmgfw.efi")) {
-        Write-Warning "Boot files missing in C:\Windows\Boot\EFI. Trying to proceed anyway..."
-    } else {
-        Write-Host "Boot files found. Continuing..."
-    }
-
+    # Boot files
     if (-not (Test-Path "S:\EFI\Microsoft\Boot")) {
-        Write-Host "Creating EFI folder structure..."
         New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null
     }
 
@@ -124,16 +118,10 @@ try {
     $bcdResult = bcdboot C:\Windows /s S: /f UEFI
     Write-Host $bcdResult
 
-    if (-not (Test-Path "S:\EFI\Microsoft\Boot\bootmgfw.efi")) {
-        throw "bcdboot failed to write boot files. Disk will not boot."
-    }
-
-    if (-not (Test-Path "S:\EFI\Boot")) {
-        New-Item -Path "S:\EFI\Boot" -ItemType Directory -Force | Out-Null
-    }
     Copy-Item -Path "S:\EFI\Microsoft\Boot\bootmgfw.efi" -Destination "S:\EFI\Boot\bootx64.efi" -Force
     Write-Host "Boot files created successfully."
 
+    # Create required folders
     $TargetFolders = @(
         "C:\Windows\Panther\Unattend",
         "C:\Windows\Setup\Scripts",
@@ -147,6 +135,7 @@ try {
         }
     }
 
+    # Generate Autopilot JSON
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     $AutopilotConfig = @{
         CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
@@ -176,7 +165,7 @@ try {
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
-    # >>> ADDED: also place copies in legacy pickup path to help early ESP reads on some Win11 builds
+    # Copy to legacy path for early ESP pickup
     try {
         $LegacyAutoPilotDir = "C:\Windows\Provisioning\Autopilot"
         if (-not (Test-Path $LegacyAutoPilotDir)) { New-Item -Path $LegacyAutoPilotDir -ItemType Directory -Force | Out-Null }
@@ -186,19 +175,19 @@ try {
     } catch {
         Write-Warning "Could not copy Autopilot files to legacy path: $_"
     }
-    # <<< ADDED
 
+    # Unattend.xml
     $UnattendXml = @"
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
   <settings pass="oobeSystem">
-    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <InputLocale>en-GB</InputLocale>
       <SystemLocale>en-GB</SystemLocale>
       <UILanguage>en-GB</UILanguage>
       <UserLocale>en-GB</UserLocale>
     </component>
-    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <OOBE>
         <HideEULAPage>true</HideEULAPage>
         <NetworkLocation>Work</NetworkLocation>
@@ -217,17 +206,17 @@ try {
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
-    # >>> UPDATED: Autopilot script download now dynamic based on subnet
+    # Download Get-WindowsAutoPilotInfo.ps1
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
-    $AutoPilotScriptURL = "http://$ServerIP/Get-WindowsAutoPilotInfo.ps1"
+    $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
     try {
         Invoke-WebRequest -Uri $AutoPilotScriptURL -OutFile $AutoPilotScriptPath -UseBasicParsing -ErrorAction Stop
-        Write-Host "Downloaded Get-WindowsAutoPilotInfo.ps1 successfully from $AutoPilotScriptURL."
+        Write-Host "Downloaded Get-WindowsAutoPilotInfo.ps1 successfully."
     } catch {
-        Write-Warning "Failed to download Autopilot script from $AutoPilotScriptURL: $_"
+        Write-Warning "Failed to download Autopilot script: $_"
     }
 
-    # SetupComplete.cmd for running Autopilot upload, logging, and driver injection
+    # SetupComplete.cmd
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
 @echo off
@@ -240,7 +229,7 @@ echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 
 timeout /t 10 > nul
 
-REM --- Begin PSGallery registration fix ---
+REM --- PSGallery registration fix ---
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
     "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^
     Install-PackageProvider -Name NuGet -Force -Scope AllUsers -Confirm:$false; ^
@@ -249,7 +238,6 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
     } else { ^
         Set-PSRepository -Name PSGallery -InstallationPolicy Trusted ^
     }" >> %LOGFILE% 2>&1
-REM --- End PSGallery registration fix ---
 
 if exist "%SCRIPT%" (
     powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "%GROUPTAG%" -Online -Assign >> %LOGFILE% 2>&1
@@ -257,40 +245,47 @@ if exist "%SCRIPT%" (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
 
-REM --- Inject model drivers via OSDCloud ---
-powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ^
-    "Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSDCloud\25.6.15.1\OSDCloud.psm1'; ^
-     Invoke-OSDCloudDriver -OfflinePath 'C:\' -ForceUnsigned -Recurse >> '%LOGFILE%' 2>&1"
+REM --- DRIVER INJECTION BASED ON MODEL ---
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+"Try {
+    \$LogFile='%LOGFILE%'
+    Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSD\25.6.15.1\OSD.psm1' -ErrorAction Stop
+    Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSDCloud\25.6.15.1\OSDCloud.psm1' -ErrorAction Stop
 
-echo Waiting 300 seconds (5 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
+    # Detect system model
+    \$Model = (Get-WmiObject Win32_ComputerSystem).Model
+    Add-Content -Path \$LogFile -Value ('Detected Model: ' + \$Model)
+
+    # Map model to driver repository (can be URL or UNC)
+    \$DriverRepo = 'http://10.1.192.20/drivers/' + \$Model
+
+    # Download and extract drivers to temporary folder
+    \$TempDrv = 'C:\TempDrivers'
+    if (-not (Test-Path \$TempDrv)) { New-Item -Path \$TempDrv -ItemType Directory | Out-Null }
+    \$DriverZip = \$TempDrv + '\drivers.zip'
+    Invoke-WebRequest -Uri \$DriverRepo + '/drivers.zip' -OutFile \$DriverZip -UseBasicParsing
+    Expand-Archive -Path \$DriverZip -DestinationPath \$TempDrv -Force
+
+    # Inject drivers offline
+    Invoke-OSDCloudDriver -OfflinePath 'C:\' -SourcePath \$TempDrv -ForceUnsigned -Recurse | Out-File -FilePath \$LogFile -Append
+
+    Add-Content -Path \$LogFile -Value 'Driver injection complete.'
+} Catch {
+    'Driver injection failed: ' + \$_.Exception.Message | Out-File -FilePath \$LogFile -Append
+}"
+
+echo Waiting 300 seconds (5 minutes) to ensure uploads finish and prevent reboot... >> %LOGFILE%
 timeout /t 300 /nobreak > nul
 
 echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
 echo Running Sysprep reseal... >> %LOGFILE%
-# %WINDIR%\System32\Sysprep\Sysprep.exe /oobe /generalize /quiet /reboot
+REM %WINDIR%\System32\Sysprep\Sysprep.exe /oobe /generalize /quiet /reboot
 "@
     Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
 
     Write-Host "SetupComplete.cmd created successfully."
 
-    # >>> ADDED: Copy OSD/OSDCloud modules from WinPE into deployed OS
-    try {
-        $moduleSrc = "X:\Program Files\WindowsPowerShell\Modules"
-        $moduleDst = "C:\Program Files\WindowsPowerShell\Modules"
-        if (Test-Path $moduleSrc) {
-            Write-Host "Copying OSD modules from WinPE to deployed OS..."
-            Copy-Item -Path "$moduleSrc\OSD*"      -Destination $moduleDst -Recurse -Force -ErrorAction Stop
-            Copy-Item -Path "$moduleSrc\OSDCloud*" -Destination $moduleDst -Recurse -Force -ErrorAction Stop
-            Write-Host "Modules copied successfully to $moduleDst."
-        } else {
-            Write-Warning "WinPE module source not found at $moduleSrc"
-        }
-    } catch {
-        Write-Warning "Failed to copy OSD/OSDCloud modules: $_"
-    }
-    # <<< END ADDITION
-
-    # >>> ADDED: set a simple requirement/delay flag so your Win32 app only attempts once prep is complete
+    # Write ReadyForWin32 flag
     try {
         New-Item -Path "HKLM:\SOFTWARE\OBG" -ErrorAction SilentlyContinue | Out-Null
         New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
@@ -299,7 +294,6 @@ echo Running Sysprep reseal... >> %LOGFILE%
     } catch {
         Write-Warning "Failed to write ReadyForWin32 requirement flag: $_"
     }
-    # <<< ADDED
 
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
