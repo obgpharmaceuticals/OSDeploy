@@ -24,9 +24,8 @@ try {
     # Always wipe Disk 0
     $DiskNumber = 0
 
-    # Find the first disk that is online, fixed, and has the largest size (usually your boot disk)
+    # Find the first disk that is online, fixed, and has the largest size
     $Disk = Get-Disk | Where-Object { $_.IsSystem -eq $false -and $_.OperationalStatus -eq "Online" -and $_.BusType -in @("NVMe", "SATA", "SCSI", "ATA") } | Sort-Object -Property Size -Descending | Select-Object -First 1
-
     if (-not $Disk) {
         Write-Error "No suitable disk found for installation."
         exit 1
@@ -53,7 +52,6 @@ try {
     $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
     Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
-
     Write-Host "Disk $DiskNumber partitioned successfully."
 
     # --- Determine client IP using WMI (WinPE compatible) ---
@@ -62,9 +60,7 @@ try {
              ForEach-Object { $_.IPAddress } |
              Where-Object { $_ -notlike "169.*" -and $_ -ne "127.0.0.1" } |
              Select-Object -First 1)
-
     if (-not $ClientIP) { throw "Could not determine client IP address." }
-
     Write-Host "Client IP detected: $ClientIP"
 
     # Define subnet to deployment server mapping
@@ -74,9 +70,7 @@ try {
         "10.5.192" = "10.5.192.20"
     }
 
-    # Extract first three octets of client IP
     $Subnet = ($ClientIP -split "\.")[0..2] -join "."
-
     if ($DeploymentServers.ContainsKey($Subnet)) {
         $ServerIP = $DeploymentServers[$Subnet]
         Write-Host "Deployment server selected: $ServerIP"
@@ -113,11 +107,9 @@ try {
     if (-not (Test-Path "S:\EFI\Microsoft\Boot")) {
         New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null
     }
-
     Write-Host "Running bcdboot to create UEFI boot entry..."
     $bcdResult = bcdboot C:\Windows /s S: /f UEFI
     Write-Host $bcdResult
-
     Copy-Item -Path "S:\EFI\Microsoft\Boot\bootmgfw.efi" -Destination "S:\EFI\Boot\bootx64.efi" -Force
     Write-Host "Boot files created successfully."
 
@@ -128,7 +120,6 @@ try {
         "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot",
         "C:\Autopilot"
     )
-
     foreach ($Folder in $TargetFolders) {
         if (-not (Test-Path $Folder)) {
             New-Item -Path $Folder -ItemType Directory -Force | Out-Null
@@ -226,7 +217,6 @@ set GROUPTAG=$GroupTag
 
 echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
 echo Timestamp: %DATE% %TIME% >> %LOGFILE%
-
 timeout /t 10 > nul
 
 REM --- PSGallery registration fix ---
@@ -245,33 +235,19 @@ if exist "%SCRIPT%" (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
 
-REM --- DRIVER INJECTION BASED ON MODEL ---
+REM --- DRIVER INJECTION VIA WINDOWS UPDATE ---
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
 "Try {
     \$LogFile='%LOGFILE%'
+    Add-Content -Path \$LogFile -Value ('===== DRIVER INJECTION VIA WINDOWS UPDATE ===== Timestamp: ' + (Get-Date))
     Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSD\25.6.15.1\OSD.psm1' -ErrorAction Stop
     Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSDCloud\25.6.15.1\OSDCloud.psm1' -ErrorAction Stop
-
-    # Detect system model
-    \$Model = (Get-WmiObject Win32_ComputerSystem).Model
+    \$Model = (Get-CimInstance Win32_ComputerSystem).Model
     Add-Content -Path \$LogFile -Value ('Detected Model: ' + \$Model)
-
-    # Map model to driver repository (can be URL or UNC)
-    \$DriverRepo = 'http://10.1.192.20/drivers/' + \$Model
-
-    # Download and extract drivers to temporary folder
-    \$TempDrv = 'C:\TempDrivers'
-    if (-not (Test-Path \$TempDrv)) { New-Item -Path \$TempDrv -ItemType Directory | Out-Null }
-    \$DriverZip = \$TempDrv + '\drivers.zip'
-    Invoke-WebRequest -Uri \$DriverRepo + '/drivers.zip' -OutFile \$DriverZip -UseBasicParsing
-    Expand-Archive -Path \$DriverZip -DestinationPath \$TempDrv -Force
-
-    # Inject drivers offline
-    Invoke-OSDCloudDriver -OfflinePath 'C:\' -SourcePath \$TempDrv -ForceUnsigned -Recurse | Out-File -FilePath \$LogFile -Append
-
-    Add-Content -Path \$LogFile -Value 'Driver injection complete.'
+    Get-WindowsUpdateDriver -Path 'C:\' -Force -Verbose *> \$LogFile
+    Add-Content -Path \$LogFile -Value 'Driver injection via Windows Update complete.'
 } Catch {
-    'Driver injection failed: ' + \$_.Exception.Message | Out-File -FilePath \$LogFile -Append
+    Add-Content -Path '%LOGFILE%' -Value ('Driver injection failed: ' + \$_.Exception.Message)
 }"
 
 echo Waiting 300 seconds (5 minutes) to ensure uploads finish and prevent reboot... >> %LOGFILE%
@@ -282,7 +258,6 @@ echo Running Sysprep reseal... >> %LOGFILE%
 REM %WINDIR%\System32\Sysprep\Sysprep.exe /oobe /generalize /quiet /reboot
 "@
     Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
-
     Write-Host "SetupComplete.cmd created successfully."
 
     # Write ReadyForWin32 flag
@@ -299,10 +274,8 @@ REM %WINDIR%\System32\Sysprep\Sysprep.exe /oobe /generalize /quiet /reboot
     Start-Sleep -Seconds 5
     # Restart-Computer -Force
 
-}
-catch {
+} catch {
     Write-Error "Deployment failed: $_"
-}
-finally {
+} finally {
     try { Stop-Transcript } catch {}
 }
