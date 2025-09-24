@@ -101,8 +101,8 @@ try {
     # Import OSD modules & inject drivers
     # -----------------------------
     Write-Host "Importing OSD and OSDCloud modules..."
-    Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSD\25.6.15.1\OSD.psm1' -ErrorAction Stop
-    Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSDCloud\25.6.15.1\OSDCloud.psm1' -ErrorAction Stop
+    Import-Module "X:\Windows\System32\WindowsPowerShell\v1.0\Modules\OSD\OSD.psm1" -Force -ErrorAction Stop
+    Import-Module "X:\Windows\System32\WindowsPowerShell\v1.0\Modules\OSDCloud\OSDCloud.psm1" -Force -ErrorAction Stop
 
     $Model = Get-OSDComputerModel
     if (-not $Model) { $Model = "<unknown>" }
