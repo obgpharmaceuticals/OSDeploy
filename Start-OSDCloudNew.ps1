@@ -108,7 +108,7 @@ try {
     Import-Module $OSDCloudModule -Force -ErrorAction Stop
     Write-Host "Modules imported successfully."
     
-    $Model = Get-OSDComputerModel
+    $Model = Get-MyComputerModel
     if (-not $Model) { $Model = "<unknown>" }
     Write-Host "Detected model: $Model"
 
