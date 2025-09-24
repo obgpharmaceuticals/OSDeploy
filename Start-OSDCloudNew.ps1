@@ -1,10 +1,16 @@
-# Start transcript logging 
+# =============================================
+# Windows 11 Deployment Script with Offline Driver Injection
+# =============================================
+
+# Start transcript for WinPE logging
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
     Write-Host "Starting Windows 11 OBG deployment..." -ForegroundColor Cyan
 
+    # -----------------------------
     # Prompt for system type
+    # -----------------------------
     Write-Host "Select system type:"
     Write-Host "1. Productivity Desktop"
     Write-Host "2. Productivity Laptop"
@@ -21,119 +27,119 @@ try {
     }
     Write-Host "GroupTag set to: $GroupTag"
 
-    # Always wipe Disk 0
-    $DiskNumber = 0
+    # -----------------------------
+    # Select disk to wipe and deploy
+    # -----------------------------
+    $Disk = Get-Disk | Where-Object {
+        $_.IsSystem -eq $false -and
+        $_.OperationalStatus -eq "Online" -and
+        $_.BusType -in @("NVMe", "SATA", "SCSI", "ATA")
+    } | Sort-Object -Property Size -Descending | Select-Object -First 1
 
-    # Find the first disk that is online, fixed, and has the largest size
-    $Disk = Get-Disk | Where-Object { $_.IsSystem -eq $false -and $_.OperationalStatus -eq "Online" -and $_.BusType -in @("NVMe", "SATA", "SCSI", "ATA") } | Sort-Object -Property Size -Descending | Select-Object -First 1
-    if (-not $Disk) {
-        Write-Error "No suitable disk found for installation."
-        exit 1
-    }
+    if (-not $Disk) { throw "No suitable disk found for installation." }
 
     $DiskNumber = $Disk.Number
-    Write-Host "Selected disk number $DiskNumber ($($Disk.FriendlyName)) with BusType $($Disk.BusType)"
+    Write-Host "Selected disk number $DiskNumber ($($Disk.FriendlyName))"
 
     Clear-Disk -Number $DiskNumber -RemoveData -RemoveOEM -Confirm:$false
     Initialize-Disk -Number $DiskNumber -PartitionStyle GPT -Confirm:$false
     Set-Disk -Number $DiskNumber -IsOffline $false
     Set-Disk -Number $DiskNumber -IsReadOnly $false
 
-    # EFI partition size 512MB
+    # -----------------------------
+    # Partition disk
+    # -----------------------------
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 512MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
     Format-Volume -Partition $ESP -FileSystem FAT32 -NewFileSystemLabel "System" -Confirm:$false
     $ESP | Set-Partition -NewDriveLetter S
-    Write-Host "EFI partition assigned to drive letter: S"
 
-    # MSR partition 128MB
     New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
 
-    # OS partition fills the rest of the disk
     $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
     Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
+
     Write-Host "Disk $DiskNumber partitioned successfully."
 
-    # --- Determine client IP using WMI (WinPE compatible) ---
-    $ClientIP = (Get-WmiObject Win32_NetworkAdapterConfiguration | 
-             Where-Object { $_.IPEnabled -eq $true -and $_.IPAddress -ne $null } |
-             ForEach-Object { $_.IPAddress } |
-             Where-Object { $_ -notlike "169.*" -and $_ -ne "127.0.0.1" } |
-             Select-Object -First 1)
+    # -----------------------------
+    # Determine client IP & deployment server
+    # -----------------------------
+    $ClientIP = (Get-WmiObject Win32_NetworkAdapterConfiguration |
+        Where-Object { $_.IPEnabled -eq $true -and $_.IPAddress -ne $null } |
+        ForEach-Object { $_.IPAddress } |
+        Where-Object { $_ -notlike "169.*" -and $_ -ne "127.0.0.1" } |
+        Select-Object -First 1)
     if (-not $ClientIP) { throw "Could not determine client IP address." }
     Write-Host "Client IP detected: $ClientIP"
 
-    # Define subnet to deployment server mapping
     $DeploymentServers = @{
         "10.1.192" = "10.1.192.20"
         "10.3.192" = "10.3.192.20"
         "10.5.192" = "10.5.192.20"
     }
-
     $Subnet = ($ClientIP -split "\.")[0..2] -join "."
     if ($DeploymentServers.ContainsKey($Subnet)) {
         $ServerIP = $DeploymentServers[$Subnet]
         Write-Host "Deployment server selected: $ServerIP"
-    } else {
-        throw "No deployment server configured for subnet $Subnet"
-    }
+    } else { throw "No deployment server configured for subnet $Subnet" }
 
     $NetworkPath = "\\$ServerIP\ReadOnlyShare"
     $DriveLetter = "M:"
     net use $DriveLetter /delete /yes > $null 2>&1
-    Write-Host "Mapping $DriveLetter to $NetworkPath..."
-    $mapResult = net use $DriveLetter $NetworkPath /persistent:no 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to map $DriveLetter to $NetworkPath. Error details: $mapResult"
-    }
+    net use $DriveLetter $NetworkPath /persistent:no | Out-Null
 
-    $WimPath = "m:\install.wim"
-    if (-not (Test-Path $WimPath)) {
-        throw "WIM file not found at $WimPath"
-    }
+    # -----------------------------
+    # Apply WIM image
+    # -----------------------------
+    $WimPath = "M:\install.wim"
+    if (-not (Test-Path $WimPath)) { throw "WIM file not found at $WimPath" }
     Write-Host "Applying Windows image from $WimPath to C:..."
     $dism = Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image", "/ImageFile:$WimPath", "/Index:6", "/ApplyDir:C:\" -Wait -PassThru
-    if ($dism.ExitCode -ne 0) {
-        throw "DISM failed with exit code $($dism.ExitCode)"
-    }
+    if ($dism.ExitCode -ne 0) { throw "DISM failed with exit code $($dism.ExitCode)" }
 
-    Write-Host "Disabling ZDP offline in the image..."
-    reg load HKLM\TempHive C:\Windows\System32\config\SOFTWARE
-    reg add "HKLM\TempHive\Microsoft\Windows\CurrentVersion\OOBE" /v DisableZDP /t REG_DWORD /d 1 /f
-    reg unload HKLM\TempHive
-    Write-Host "ZDP has been disabled offline successfully."
+    # -----------------------------
+    # Import OSD modules & inject drivers
+    # -----------------------------
+    Write-Host "Importing OSD and OSDCloud modules..."
+    Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSD\25.6.15.1\OSD.psm1' -ErrorAction Stop
+    Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSDCloud\25.6.15.1\OSDCloud.psm1' -ErrorAction Stop
 
-    # Boot files
-    if (-not (Test-Path "S:\EFI\Microsoft\Boot")) {
-        New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null
+    $Model = Get-OSDComputerModel
+    if (-not $Model) { $Model = "<unknown>" }
+    Write-Host "Detected model: $Model"
+
+    $LogFile = "X:\DeployScript.log"
+    Add-Content -Path $LogFile -Value ("Detected model: $Model")
+
+    Write-Host "Injecting drivers into offline Windows (C:\)..."
+    Invoke-OSDCloudDriverPackCM -ComputerModel $Model -Target 'C:\' -ForceUnsigned -Verbose | ForEach-Object {
+        Add-Content -Path $LogFile -Value $_
     }
-    Write-Host "Running bcdboot to create UEFI boot entry..."
-    $bcdResult = bcdboot C:\Windows /s S: /f UEFI
-    Write-Host $bcdResult
+    Write-Host "Driver injection complete."
+    Add-Content -Path $LogFile -Value "Driver injection complete."
+
+    # -----------------------------
+    # Configure boot files (UEFI)
+    # -----------------------------
+    if (-not (Test-Path "S:\EFI\Microsoft\Boot")) { New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null }
+    bcdboot C:\Windows /s S: /f UEFI
+    if (-not (Test-Path "S:\EFI\Boot")) { New-Item -Path "S:\EFI\Boot" -ItemType Directory -Force | Out-Null }
     Copy-Item -Path "S:\EFI\Microsoft\Boot\bootmgfw.efi" -Destination "S:\EFI\Boot\bootx64.efi" -Force
-    Write-Host "Boot files created successfully."
 
-    # Create required folders
-    $TargetFolders = @(
-        "C:\Windows\Panther\Unattend",
-        "C:\Windows\Setup\Scripts",
-        "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot",
-        "C:\Autopilot"
-    )
-    foreach ($Folder in $TargetFolders) {
-        if (-not (Test-Path $Folder)) {
-            New-Item -Path $Folder -ItemType Directory -Force | Out-Null
-        }
-    }
-
-    # Generate Autopilot JSON
+    # -----------------------------
+    # Create Autopilot JSON files
+    # -----------------------------
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
-    $AutopilotConfig = @{
-        CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
-        CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        GroupTag                 = $GroupTag
+    foreach ($Folder in @($AutopilotFolder, "C:\Autopilot")) {
+        if (-not (Test-Path $Folder)) { New-Item -Path $Folder -ItemType Directory -Force | Out-Null }
     }
-    $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
+
+    $AutopilotConfig = @{
+        CloudAssignedTenantId     = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
+        GroupTag                  = $GroupTag
+    }
+    $AutopilotConfig | ConvertTo-Json -Depth 3 | Set-Content "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
     $OOBEJson = @{
         CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
@@ -145,50 +151,42 @@ try {
         DeviceLicensingType           = "WindowsEnterprise"
         Language                      = "en-GB"
         SkipZDP                       = $true
-        SkipUserStatusPage            = $false
-        SkipAccountSetup              = $false
-        SkipOOBE                      = $false
         RemovePreInstalledApps        = @(
-            "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
-            "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
-            "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder"
+            "Microsoft.ZuneMusic","Microsoft.XboxApp","Microsoft.XboxGameOverlay",
+            "Microsoft.XboxGamingOverlay","Microsoft.XboxSpeechToTextOverlay",
+            "Microsoft.YourPhone","Microsoft.Getstarted","Microsoft.3DBuilder"
         )
     }
-    $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
+    $OOBEJson | ConvertTo-Json -Depth 5 | Set-Content "$AutopilotFolder\OOBE.json" -Encoding utf8
 
-    # Copy to legacy path
-    try {
-        $LegacyAutoPilotDir = "C:\Windows\Provisioning\Autopilot"
-        if (-not (Test-Path $LegacyAutoPilotDir)) { New-Item -Path $LegacyAutoPilotDir -ItemType Directory -Force | Out-Null }
-        Copy-Item -Path "$AutopilotFolder\AutopilotConfigurationFile.json" -Destination "$LegacyAutoPilotDir\AutopilotConfigurationFile.json" -Force
-        Copy-Item -Path "$AutopilotFolder\OOBE.json" -Destination "$LegacyAutoPilotDir\OOBE.json" -Force
-        Write-Host "Copied Autopilot JSONs to legacy path for early pickup."
-    } catch {
-        Write-Warning "Could not copy Autopilot files to legacy path: $_"
-    }
+    # Copy JSONs to legacy pickup path
+    $LegacyDir = "C:\Windows\Provisioning\Autopilot"
+    if (-not (Test-Path $LegacyDir)) { New-Item -Path $LegacyDir -ItemType Directory -Force | Out-Null }
+    Copy-Item "$AutopilotFolder\AutopilotConfigurationFile.json" "$LegacyDir\AutopilotConfigurationFile.json" -Force
+    Copy-Item "$AutopilotFolder\OOBE.json" "$LegacyDir\OOBE.json" -Force
 
-    # Unattend.xml
+    Write-Host "Autopilot JSON files created successfully."
+
+    # -----------------------------
+    # Create Unattend.xml
+    # -----------------------------
     $UnattendXml = @"
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
   <settings pass="oobeSystem">
-    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
       <InputLocale>en-GB</InputLocale>
       <SystemLocale>en-GB</SystemLocale>
       <UILanguage>en-GB</UILanguage>
       <UserLocale>en-GB</UserLocale>
     </component>
-    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
       <OOBE>
         <HideEULAPage>true</HideEULAPage>
         <NetworkLocation>Work</NetworkLocation>
         <ProtectYourPC>1</ProtectYourPC>
-        <HideLocalAccountScreen>false</HideLocalAccountScreen>
-        <HideOEMRegistrationScreen>false</HideOEMRegistrationScreen>
-        <HideOnlineAccountScreens>false</HideOnlineAccountScreens>
-        <HideWirelessSetupInOOBE>false</HideWirelessSetupInOOBE>
-        <SkipUserOOBE>false</SkipUserOOBE>
-        <SkipMachineOOBE>false</SkipMachineOOBE>
       </OOBE>
     </component>
   </settings>
@@ -197,164 +195,17 @@ try {
     $UnattendPath = "C:\Windows\Panther\Unattend\Unattend.xml"
     Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
-    # Download Get-WindowsAutoPilotInfo.ps1
+    # -----------------------------
+    # Download Autopilot script
+    # -----------------------------
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
-    $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
-    try {
-        Invoke-WebRequest -Uri $AutoPilotScriptURL -OutFile $AutoPilotScriptPath -UseBasicParsing -ErrorAction Stop
-        Write-Host "Downloaded Get-WindowsAutoPilotInfo.ps1 successfully."
-    } catch {
-        Write-Warning "Failed to download Autopilot script: $_"
-    }
+    $AutoPilotScriptURL = "http://$ServerIP/Get-WindowsAutoPilotInfo.ps1"
+    Invoke-WebRequest -Uri $AutoPilotScriptURL -OutFile $AutoPilotScriptPath -UseBasicParsing -ErrorAction Stop
+    Write-Host "Downloaded Get-WindowsAutoPilotInfo.ps1 successfully."
 
-    # ----------------------------
-    # SetupComplete helper PS1 and SetupComplete.cmd
-    # ----------------------------
-    $HelperPath = "C:\Autopilot\SetupComplete_Helper.ps1"
-    $HelperContent = @'
-param(
-    [string]$LogFile = "C:\Autopilot\Autopilot-Diag.txt",
-    [string]$Script = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1",
-    [string]$GroupTag = "ProductivityDesktop11",
-    [int]$AutopilotRetries = 3,
-    [int]$AutopilotRetryDelaySec = 30
-)
-
-# Safe logging helper
-function Write-Log {
-    param([string]$Message)
-    $ts = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
-    try { Add-Content -Path $LogFile -Value ("[{0}] {1}" -f $ts, $Message) } catch {}
-}
-
-# Try to start transcript but don't fail if unavailable
-try { Start-Transcript -Path $LogFile -Append -ErrorAction SilentlyContinue } catch {}
-
-Write-Log "===== SETUP COMPLETE HELPER START ====="
-Write-Log "Environment: Script=$Script, GroupTag=$GroupTag"
-
-# Short initial wait to allow network stack to stabilise
-Start-Sleep -Seconds 10
-
-# ---- DRIVER INJECTION VIA WINDOWS UPDATE (FIRST) ----
-try {
-    Write-Log "Starting driver injection via Windows Update..."
-    # Ensure OSD modules available - if not present, this will log the error
-    try {
-        Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSD\25.6.15.1\OSD.psm1' -ErrorAction Stop
-        Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSDCloud\25.6.15.1\OSDCloud.psm1' -ErrorAction Stop
-    } catch {
-        Write-Log "Warning: Could not import OSD/OSDCloud modules: $($_.Exception.Message)"
-    }
-
-    $model = ""
-    try { $model = (Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).Model } catch {}
-    Write-Log ("Detected model: " + ($model -ne "" ? $model : "<unknown>"))
-
-    # Run Get-WindowsUpdateDriver and capture all streams
-    try {
-        # Redirect all output streams to file
-        Get-WindowsUpdateDriver -Path 'C:\' -Force -Verbose *>> $LogFile
-        Write-Log "Driver injection completed."
-    } catch {
-        Write-Log ("Driver injection failed: " + $_.Exception.Message)
-    }
-}
-catch {
-    Write-Log ("Unexpected error during driver injection: " + $_.Exception.Message)
-}
-
-# ---- AUTOPILOT REGISTRATION (AFTER DRIVERS) ----
-if (-not (Test-Path $Script)) {
-    Write-Log "Autopilot script not found at $Script - skipping Autopilot registration."
-} else {
-    Write-Log "Beginning Autopilot registration attempts (max $AutopilotRetries)."
-
-    # Ensure TLS 1.2
-    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
-
-    $registered = $false
-    for ($i = 1; $i -le $AutopilotRetries; $i++) {
-        Write-Log ("Autopilot attempt $i of $AutopilotRetries")
-        try {
-            # Invoke the existing Get-WindowsAutoPilotInfo.ps1 script with provided credentials
-            & $Script -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag $GroupTag -Online -Assign *>> $LogFile 2>&1
-            # If script did not throw, assume success (script should return non-zero on failure)
-            Write-Log "Autopilot script finished without terminating error on attempt $i."
-            $registered = $true
-            break
-        } catch {
-            Write-Log ("Autopilot attempt $i failed: " + $_.Exception.Message)
-            if ($i -lt $AutopilotRetries) {
-                Write-Log ("Waiting $AutopilotRetryDelaySec seconds before retry...")
-                Start-Sleep -Seconds $AutopilotRetryDelaySec
-            }
-        }
-    }
-
-    if ($registered) {
-        Write-Log "Autopilot registration succeeded."
-    } else {
-        Write-Log "Autopilot registration failed after $AutopilotRetries attempts."
-    }
-}
-
-Write-Log "Helper sleeping 300 seconds to allow any pending uploads to finish..."
-Start-Sleep -Seconds 300
-
-Write-Log "===== SETUP COMPLETE HELPER END ====="
-try { Stop-Transcript -ErrorAction SilentlyContinue } catch {}
-'@
-
-    # Write helper PS1
-    Try {
-        if (-not (Test-Path "C:\Autopilot")) { New-Item -Path "C:\Autopilot" -ItemType Directory -Force | Out-Null }
-        Set-Content -Path $HelperPath -Value $HelperContent -Encoding UTF8
-        Write-Host "Wrote helper script to $HelperPath"
-    } catch {
-        Write-Warning "Failed to write helper script: $_"
-    }
-
-    # Now write a minimal SetupComplete.cmd that calls the helper PS1 (no complicated quoting)
-    $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
-    $SetupCompleteContent = @"
-@echo off
-REM Minimal SetupComplete.cmd that calls the PowerShell helper
-if not exist "C:\Autopilot" mkdir "C:\Autopilot"
-set LOGFILE=C:\Autopilot\Autopilot-Diag.txt
-set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
-set GROUPTAG=$GroupTag
-
-echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
-echo Timestamp: %DATE% %TIME% >> %LOGFILE%
-
-REM Call the PowerShell helper and redirect stdout+stderr to the log
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Autopilot\SetupComplete_Helper.ps1" -LogFile "%LOGFILE%" -Script "%SCRIPT%" -GroupTag "%GROUPTAG%" >> "%LOGFILE%" 2>>&1
-
-echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
-"@
-    # Write SetupComplete.cmd
-    Try {
-        if (-not (Test-Path "C:\Windows\Setup\Scripts")) { New-Item -Path "C:\Windows\Setup\Scripts" -ItemType Directory -Force | Out-Null }
-        Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
-        Write-Host "SetupComplete.cmd created successfully."
-    } catch {
-        Write-Warning "Failed to write SetupComplete.cmd: $_"
-    }
-
-    # Write ReadyForWin32 flag
-    try {
-        New-Item -Path "HKLM:\SOFTWARE\OBG" -ErrorAction SilentlyContinue | Out-Null
-        New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
-        New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
-        Write-Host "Wrote HKLM\SOFTWARE\OBG\Signals\ReadyForWin32 = 1 (use as Intune requirement rule)."
-    } catch {
-        Write-Warning "Failed to write ReadyForWin32 requirement flag: $_"
-    }
-
-    Write-Host "Deployment script completed. Rebooting in 5 seconds..."
+    Write-Host "Deployment completed successfully. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    Restart-Computer -Force
+    # Restart-Computer -Force
 
 } catch {
     Write-Error "Deployment failed: $_"
