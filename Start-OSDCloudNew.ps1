@@ -208,13 +208,119 @@ try {
     }
 
     # ----------------------------
-    # SetupComplete.cmd (fixed)
+    # SetupComplete helper PS1 and SetupComplete.cmd
     # ----------------------------
-$SetupCompleteContent = @"
+    $HelperPath = "C:\Autopilot\SetupComplete_Helper.ps1"
+    $HelperContent = @'
+param(
+    [string]$LogFile = "C:\Autopilot\Autopilot-Diag.txt",
+    [string]$Script = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1",
+    [string]$GroupTag = "ProductivityDesktop11",
+    [int]$AutopilotRetries = 3,
+    [int]$AutopilotRetryDelaySec = 30
+)
+
+# Safe logging helper
+function Write-Log {
+    param([string]$Message)
+    $ts = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+    try { Add-Content -Path $LogFile -Value ("[{0}] {1}" -f $ts, $Message) } catch {}
+}
+
+# Try to start transcript but don't fail if unavailable
+try { Start-Transcript -Path $LogFile -Append -ErrorAction SilentlyContinue } catch {}
+
+Write-Log "===== SETUP COMPLETE HELPER START ====="
+Write-Log "Environment: Script=$Script, GroupTag=$GroupTag"
+
+# Short initial wait to allow network stack to stabilise
+Start-Sleep -Seconds 10
+
+# ---- DRIVER INJECTION VIA WINDOWS UPDATE (FIRST) ----
+try {
+    Write-Log "Starting driver injection via Windows Update..."
+    # Ensure OSD modules available - if not present, this will log the error
+    try {
+        Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSD\25.6.15.1\OSD.psm1' -ErrorAction Stop
+        Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSDCloud\25.6.15.1\OSDCloud.psm1' -ErrorAction Stop
+    } catch {
+        Write-Log "Warning: Could not import OSD/OSDCloud modules: $($_.Exception.Message)"
+    }
+
+    $model = ""
+    try { $model = (Get-CimInstance Win32_ComputerSystem -ErrorAction Stop).Model } catch {}
+    Write-Log ("Detected model: " + ($model -ne "" ? $model : "<unknown>"))
+
+    # Run Get-WindowsUpdateDriver and capture all streams
+    try {
+        # Redirect all output streams to file
+        Get-WindowsUpdateDriver -Path 'C:\' -Force -Verbose *>> $LogFile
+        Write-Log "Driver injection completed."
+    } catch {
+        Write-Log ("Driver injection failed: " + $_.Exception.Message)
+    }
+}
+catch {
+    Write-Log ("Unexpected error during driver injection: " + $_.Exception.Message)
+}
+
+# ---- AUTOPILOT REGISTRATION (AFTER DRIVERS) ----
+if (-not (Test-Path $Script)) {
+    Write-Log "Autopilot script not found at $Script - skipping Autopilot registration."
+} else {
+    Write-Log "Beginning Autopilot registration attempts (max $AutopilotRetries)."
+
+    # Ensure TLS 1.2
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
+
+    $registered = $false
+    for ($i = 1; $i -le $AutopilotRetries; $i++) {
+        Write-Log ("Autopilot attempt $i of $AutopilotRetries")
+        try {
+            # Invoke the existing Get-WindowsAutoPilotInfo.ps1 script with provided credentials
+            & $Script -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag $GroupTag -Online -Assign *>> $LogFile 2>&1
+            # If script did not throw, assume success (script should return non-zero on failure)
+            Write-Log "Autopilot script finished without terminating error on attempt $i."
+            $registered = $true
+            break
+        } catch {
+            Write-Log ("Autopilot attempt $i failed: " + $_.Exception.Message)
+            if ($i -lt $AutopilotRetries) {
+                Write-Log ("Waiting $AutopilotRetryDelaySec seconds before retry...")
+                Start-Sleep -Seconds $AutopilotRetryDelaySec
+            }
+        }
+    }
+
+    if ($registered) {
+        Write-Log "Autopilot registration succeeded."
+    } else {
+        Write-Log "Autopilot registration failed after $AutopilotRetries attempts."
+    }
+}
+
+Write-Log "Helper sleeping 300 seconds to allow any pending uploads to finish..."
+Start-Sleep -Seconds 300
+
+Write-Log "===== SETUP COMPLETE HELPER END ====="
+try { Stop-Transcript -ErrorAction SilentlyContinue } catch {}
+'@
+
+    # Write helper PS1
+    Try {
+        if (-not (Test-Path "C:\Autopilot")) { New-Item -Path "C:\Autopilot" -ItemType Directory -Force | Out-Null }
+        Set-Content -Path $HelperPath -Value $HelperContent -Encoding UTF8
+        Write-Host "Wrote helper script to $HelperPath"
+    } catch {
+        Write-Warning "Failed to write helper script: $_"
+    }
+
+    # Now write a minimal SetupComplete.cmd that calls the helper PS1 (no complicated quoting)
+    $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
+    $SetupCompleteContent = @"
 @echo off
-REM ============================
-REM SetupComplete.cmd for Autopilot registration and driver injection
-REM ============================
+REM Minimal SetupComplete.cmd that calls the PowerShell helper
+if not exist "C:\Autopilot" mkdir "C:\Autopilot"
 set LOGFILE=C:\Autopilot\Autopilot-Diag.txt
 set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
 set GROUPTAG=$GroupTag
@@ -222,40 +328,19 @@ set GROUPTAG=$GroupTag
 echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
 echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 
-powershell.exe -NoProfile -Command "Start-Sleep -Seconds 10"
-
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Try { 
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-    Install-PackageProvider -Name NuGet -Force -Scope AllUsers -Confirm:\$false
-    if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) { 
-        Register-PSRepository -Name PSGallery -SourceLocation 'https://www.powershellgallery.com/api/v2' -InstallationPolicy Trusted 
-    } else { 
-        Set-PSRepository -Name PSGallery -InstallationPolicy Trusted 
-    } 
-} Catch { Add-Content -Path '%LOGFILE%' -Value ('PSGallery registration failed: ' + \$_.Exception.Message) }"
-
-if exist "%SCRIPT%" (
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "%GROUPTAG%" -Online -Assign >> %LOGFILE% 2>&1
-) else (
-    echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
-)
-
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Try { 
-    Add-Content -Path '%LOGFILE%' -Value ('===== DRIVER INJECTION VIA WINDOWS UPDATE ===== Timestamp: ' + (Get-Date))
-    Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSD\25.6.15.1\OSD.psm1' -ErrorAction Stop
-    Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSDCloud\25.6.15.1\OSDCloud.psm1' -ErrorAction Stop
-    $Model = (Get-CimInstance Win32_ComputerSystem).Model
-    Add-Content -Path '%LOGFILE%' -Value ('Detected Model: ' + $Model)
-    Get-WindowsUpdateDriver -Path 'C:\' -Force -Verbose *> '%LOGFILE%'
-    Add-Content -Path '%LOGFILE%' -Value 'Driver injection complete.'
-} Catch { Add-Content -Path '%LOGFILE%' -Value ('Driver injection failed: ' + \$_.Exception.Message) }"
-
-powershell.exe -NoProfile -Command "Start-Sleep -Seconds 300"
+REM Call the PowerShell helper and redirect stdout+stderr to the log
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Autopilot\SetupComplete_Helper.ps1" -LogFile "%LOGFILE%" -Script "%SCRIPT%" -GroupTag "%GROUPTAG%" >> "%LOGFILE%" 2>>&1
 
 echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
 "@
-Set-Content -Path "C:\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupCompleteContent -Encoding ASCII
-Write-Host "SetupComplete.cmd created successfully."
+    # Write SetupComplete.cmd
+    Try {
+        if (-not (Test-Path "C:\Windows\Setup\Scripts")) { New-Item -Path "C:\Windows\Setup\Scripts" -ItemType Directory -Force | Out-Null }
+        Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
+        Write-Host "SetupComplete.cmd created successfully."
+    } catch {
+        Write-Warning "Failed to write SetupComplete.cmd: $_"
+    }
 
     # Write ReadyForWin32 flag
     try {
