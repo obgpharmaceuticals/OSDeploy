@@ -266,7 +266,7 @@ timeout /t 300 /nobreak > nul
 
 echo SetupComplete.cmd finished at %DATE% %TIME% >> %LOGFILE%
 echo Running Sysprep reseal... >> %LOGFILE%
-%WINDIR%\System32\Sysprep\Sysprep.exe /oobe /generalize /quiet /reboot
+%WINDIR%\System32\Sysprep\Sysprep.exe /oobe /quiet /reboot
 "@
     Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
 
