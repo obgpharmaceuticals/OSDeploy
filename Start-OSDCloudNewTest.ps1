@@ -168,14 +168,7 @@ try {
         SkipUserStatusPage            = $false
         SkipAccountSetup              = $false
         SkipOOBE                      = $false
-        RemovePreInstalledApps        = @(
-            "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
-            "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
-            "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder",
-            "Microsoft.Copilot", "Microsoft.WindowsFeedbackHub", "Microsoft.XboxGameCallableUI",
-            "Microsoft.BingNews", "Microsoft.MicrosoftSolitaireCollection", "Microsoft.BingWeather",
-            "Microsoft.XboxApp", "Microsoft.XboxGameOverlay"
-        )
+        # Removed RemovePreInstalledApps section entirely
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
@@ -190,16 +183,6 @@ try {
         Write-Warning "Could not copy Autopilot files to legacy path: $_"
     }
     # <<< ADDED
-
-    # --- Optional: Remove pre-installed apps immediately in deployment (current user) ---
-    foreach ($App in $OOBEJson.RemovePreInstalledApps) {
-        try {
-            Get-AppxPackage -Name $App -ErrorAction SilentlyContinue | Remove-AppxPackage -ErrorAction SilentlyContinue
-            Write-Host "Removed $App if installed."
-        } catch {
-            Write-Warning "Failed to remove $App: $_"
-        }
-    }
 
     $UnattendXml = @"
 <?xml version="1.0" encoding="utf-8"?>
@@ -298,7 +281,7 @@ echo Running Sysprep reseal... >> %LOGFILE%
 
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    Restart-Computer -Force
+    # Restart-Computer -Force
 
 }
 catch {
