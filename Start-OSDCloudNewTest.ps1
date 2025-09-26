@@ -149,9 +149,10 @@ try {
 
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     $AutopilotConfig = @{
-        CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
-        CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        GroupTag                 = $GroupTag
+        CloudAssignedTenantId      = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantDomain  = "obgpharma.onmicrosoft.com"
+        GroupTag                   = $GroupTag
+        CloudAssignedAadServerData = '{"ZeroTouchConfig":{}}'   # <<< ADDED LINE
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
@@ -168,7 +169,7 @@ try {
         SkipUserStatusPage            = $false
         SkipAccountSetup              = $false
         SkipOOBE                      = $false
-        RemovePreInstalledApps    = @(
+        RemovePreInstalledApps        = @(
             "Microsoft.ZuneMusic","Microsoft.XboxApp","Microsoft.XboxGameOverlay",
             "Microsoft.XboxGamingOverlay","Microsoft.XboxSpeechToTextOverlay",
             "Microsoft.YourPhone","Microsoft.Getstarted","Microsoft.3DBuilder",
@@ -255,7 +256,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
 REM --- End PSGallery registration fix ---
 
 if exist "%SCRIPT%" (
-    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-" -GroupTag "%GROUPTAG%" -Online -Assign >> %LOGFILE% 2>&1
+    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2D8hcB-" -GroupTag "%GROUPTAG%" -Online -Assign >> %LOGFILE% 2>&1
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
