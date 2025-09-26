@@ -168,7 +168,15 @@ try {
         SkipUserStatusPage            = $false
         SkipAccountSetup              = $false
         SkipOOBE                      = $false
-        # Removed RemovePreInstalledApps section entirely
+        RemovePreInstalledApps    = @(
+            "Microsoft.ZuneMusic","Microsoft.XboxApp","Microsoft.XboxGameOverlay",
+            "Microsoft.XboxGamingOverlay","Microsoft.XboxSpeechToTextOverlay",
+            "Microsoft.YourPhone","Microsoft.Getstarted","Microsoft.3DBuilder",
+            "Microsoft.Xbox.TCUI","Microsoft.XboxGameCallableUI","Microsoft.XboxIdentityProvider",
+            "Microsoft.MicrosoftSolitaireCollection","Microsoft.BingNews",
+            "Microsoft.WindowsFeedbackHub","Microsoft.BingWeather","Microsoft.GamingApp",
+            "Microsoft.Copilot"
+        )
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
