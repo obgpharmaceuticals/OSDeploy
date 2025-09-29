@@ -149,9 +149,9 @@ try {
 
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     $AutopilotConfig = @{
-        CloudAssignedTenantId      = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
-        CloudAssignedTenantDomain  = "obgpharma.onmicrosoft.com"
-        GroupTag                   = $GroupTag
+        CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
+        GroupTag                 = $GroupTag
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
@@ -169,13 +169,9 @@ try {
         SkipAccountSetup              = $false
         SkipOOBE                      = $false
         RemovePreInstalledApps        = @(
-            "Microsoft.ZuneMusic","Microsoft.XboxApp","Microsoft.XboxGameOverlay",
-            "Microsoft.XboxGamingOverlay","Microsoft.XboxSpeechToTextOverlay",
-            "Microsoft.YourPhone","Microsoft.Getstarted","Microsoft.3DBuilder",
-            "Microsoft.Xbox.TCUI","Microsoft.XboxGameCallableUI","Microsoft.XboxIdentityProvider",
-            "Microsoft.MicrosoftSolitaireCollection","Microsoft.BingNews",
-            "Microsoft.WindowsFeedbackHub","Microsoft.BingWeather","Microsoft.GamingApp",
-            "Microsoft.Copilot"
+            "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
+            "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
+            "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder"
         )
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
@@ -241,12 +237,20 @@ set GROUPTAG=$GroupTag
 echo ==== AUTOPILOT SETUP ==== >> %LOGFILE%
 echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 
+REM --- Wait for network and Azure AD join ---
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+    "$retry=0; do { ^
+        Start-Sleep -Seconds 10; ^
+        $aad=(dsregcmd /status | Select-String 'AzureAdJoined'); ^
+        $retry++; ^
+    } until ($aad -match 'YES' -or $retry -ge 12)"
+
 timeout /t 10 > nul
 
 REM --- Begin PSGallery registration fix ---
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
     "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^
-    Install-PackageProvider -Name NuGet -Force -Scope AllUsers -Confirm:$false; ^
+    Install-PackageProvider -Name NuGet -Force -Scope AllUsers -Confirm:\$false; ^
     if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) { ^
         Register-PSRepository -Name PSGallery -SourceLocation 'https://www.powershellgallery.com/api/v2' -InstallationPolicy Trusted ^
     } else { ^
@@ -255,14 +259,17 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
 REM --- End PSGallery registration fix ---
 
 if exist "%SCRIPT%" (
-    powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%SCRIPT%" -TenantId "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee" -AppId "faa1bc75-81c7-4750-ac62-1e5ea3ac48c5" -AppSecret "ouu8Q~h2IxPhfb3GP~o2pQOvn2D8hcB-" -GroupTag "%GROUPTAG%" -Online -Assign >> %LOGFILE% 2>&1
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+        "Import-Module 'C:\Program Files\WindowsPowerShell\Modules\Microsoft.Graph*'; ^
+         . '%SCRIPT%' -TenantId 'c95ebf8f-ebb1-45ad-8ef4-463fa94051ee' -AppId 'faa1bc75-81c7-4750-ac62-1e5ea3ac48c5' -AppSecret 'ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-' -GroupTag '%GROUPTAG%' -Online -Assign" >> %LOGFILE% 2>&1
 ) else (
     echo ERROR: Script not found at %SCRIPT% >> %LOGFILE%
 )
 
 REM --- Inject model drivers via OSDCloud ---
 powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ^
-    "Import-Module 'C:\Program Files\WindowsPowerShell\Modules\OSDCloud\25.6.15.1\OSDCloud.psm1'; ^
+    "$OSDPath='C:\Program Files\WindowsPowerShell\Modules\OSDCloud\*'; ^
+     Import-Module (Get-ChildItem $OSDPath | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName; ^
      Invoke-OSDCloudDriver -OfflinePath 'C:\' -ForceUnsigned -Recurse >> '%LOGFILE%' 2>&1"
 
 echo Waiting 300 seconds (5 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
@@ -289,7 +296,7 @@ echo Running Sysprep reseal... >> %LOGFILE%
 
     Write-Host "Deployment script completed. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    # Restart-Computer -Force
+    Restart-Computer -Force
 
 }
 catch {
