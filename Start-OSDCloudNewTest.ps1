@@ -152,7 +152,6 @@ try {
         CloudAssignedTenantId      = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain  = "obgpharma.onmicrosoft.com"
         GroupTag                   = $GroupTag
-        CloudAssignedAadServerData = '{"ZeroTouchConfig":{}}'   # <<< ADDED LINE
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
