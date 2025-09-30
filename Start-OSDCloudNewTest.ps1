@@ -239,18 +239,18 @@ echo Timestamp: %DATE% %TIME% >> %LOGFILE%
 
 REM --- Wait for network and Azure AD join ---
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-    "$retry=0; do { ^
+    "`$retry=0; do { ^
         Start-Sleep -Seconds 10; ^
-        $aad=(dsregcmd /status | Select-String 'AzureAdJoined'); ^
-        $retry++; ^
-    } until ($aad -match 'YES' -or $retry -ge 12)"
+        `$aad=(dsregcmd /status | Select-String 'AzureAdJoined'); ^
+        `$retry++; ^
+    } until (`$aad -match 'YES' -or `$retry -ge 12)"
 
 timeout /t 10 > nul
 
 REM --- Begin PSGallery registration fix ---
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
     "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; ^
-    Install-PackageProvider -Name NuGet -Force -Scope AllUsers -Confirm:\$false; ^
+    Install-PackageProvider -Name NuGet -Force -Scope AllUsers -Confirm:`$false; ^
     if (-not (Get-PSRepository -Name PSGallery -ErrorAction SilentlyContinue)) { ^
         Register-PSRepository -Name PSGallery -SourceLocation 'https://www.powershellgallery.com/api/v2' -InstallationPolicy Trusted ^
     } else { ^
@@ -268,8 +268,8 @@ if exist "%SCRIPT%" (
 
 REM --- Inject model drivers via OSDCloud ---
 powershell.exe -ExecutionPolicy Bypass -NoProfile -Command ^
-    "$OSDPath='C:\Program Files\WindowsPowerShell\Modules\OSDCloud\*'; ^
-     Import-Module (Get-ChildItem $OSDPath | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName; ^
+    "`$OSDPath='C:\Program Files\WindowsPowerShell\Modules\OSDCloud\*'; ^
+     Import-Module (Get-ChildItem `$OSDPath | Sort-Object LastWriteTime -Descending | Select-Object -First 1).FullName; ^
      Invoke-OSDCloudDriver -OfflinePath 'C:\' -ForceUnsigned -Recurse >> '%LOGFILE%' 2>&1"
 
 echo Waiting 300 seconds (5 minutes) to ensure upload finishes and prevent reboot... >> %LOGFILE%
