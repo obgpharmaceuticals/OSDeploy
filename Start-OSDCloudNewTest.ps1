@@ -218,7 +218,7 @@ try {
     Set-Content -Path $UnattendPath -Value $UnattendXml -Encoding UTF8
 
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
-    $AutoPilotScriptURL = "http://10.1.192.20/Get-WindowsAutoPilotInfo.ps1"
+    $AutoPilotScriptURL = "\\10.1.192.20\ReadOnlyShare\Get-WindowsAutopilotInfo.ps1"
     try {
         Invoke-WebRequest -Uri $AutoPilotScriptURL -OutFile $AutoPilotScriptPath -UseBasicParsing -ErrorAction Stop
         Write-Host "Downloaded Get-WindowsAutoPilotInfo.ps1 successfully."
