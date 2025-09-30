@@ -21,7 +21,7 @@ try {
     }
     Write-Host "GroupTag set to: $GroupTag"
 
-    # === Disk preparation (unchanged) ===
+    # === Disk preparation ===
     $Disk = Get-Disk | Where-Object {
         $_.IsSystem -eq $false -and $_.OperationalStatus -eq "Online" -and
         $_.BusType -in @("NVMe","SATA","SCSI","ATA")
@@ -40,10 +40,41 @@ try {
     Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
 
-    # === Map deployment share, apply WIM, create boot files (unchanged) ===
-    # ... [your existing network mapping and DISM code here] ...
+    # === Map deployment share and apply WIM ===
+    $ClientIP = (Get-WmiObject Win32_NetworkAdapterConfiguration | 
+                 Where-Object { $_.IPEnabled -eq $true -and $_.IPAddress -ne $null } |
+                 ForEach-Object { $_.IPAddress } |
+                 Where-Object { $_ -notlike "169.*" -and $_ -ne "127.0.0.1" } |
+                 Select-Object -First 1)
+    if (-not $ClientIP) { throw "Could not determine client IP address." }
+    $DeploymentServers = @{
+        "10.1.192" = "10.1.192.20"
+        "10.3.192" = "10.3.192.20"
+        "10.5.192" = "10.5.192.20"
+    }
+    $Subnet = ($ClientIP -split "\.")[0..2] -join "."
+    if ($DeploymentServers.ContainsKey($Subnet)) {
+        $ServerIP = $DeploymentServers[$Subnet]
+    } else { throw "No deployment server configured for subnet $Subnet" }
 
-    # === Autopilot JSONs (unchanged) ===
+    $NetworkPath = "\\$ServerIP\ReadOnlyShare"
+    $DriveLetter = "M:"
+    net use $DriveLetter /delete /yes > $null 2>&1
+    net use $DriveLetter $NetworkPath /persistent:no
+    $WimPath = "M:\install.wim"
+    if (-not (Test-Path $WimPath)) { throw "WIM file not found at $WimPath" }
+
+    Write-Host "Applying Windows image from $WimPath to C:..."
+    $dism = Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image", "/ImageFile:$WimPath", "/Index:6", "/ApplyDir:C:\" -Wait -PassThru
+    if ($dism.ExitCode -ne 0) { throw "DISM failed with exit code $($dism.ExitCode)" }
+
+    # === Boot files ===
+    if (-not (Test-Path "S:\EFI\Microsoft\Boot")) { New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null }
+    bcdboot C:\Windows /s S: /f UEFI
+    if (-not (Test-Path "S:\EFI\Boot")) { New-Item -Path "S:\EFI\Boot" -ItemType Directory -Force | Out-Null }
+    Copy-Item -Path "S:\EFI\Microsoft\Boot\bootmgfw.efi" -Destination "S:\EFI\Boot\bootx64.efi" -Force
+
+    # === Autopilot JSONs ===
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     New-Item -Path $AutopilotFolder -ItemType Directory -Force | Out-Null
     $AutopilotConfig = @{
@@ -52,20 +83,30 @@ try {
         GroupTag                 = $GroupTag
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
-    # ... [OOBE.json creation unchanged] ...
 
-    # Download Autopilot script
-    $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
-    $AutoPilotScriptURL  = "\\10.1.192.20\ReadOnlyShare\Get-WindowsAutoPilotInfo.ps1"
-    Invoke-WebRequest -Uri $AutoPilotScriptURL -OutFile $AutoPilotScriptPath -UseBasicParsing -ErrorAction Stop
+    $OOBEJson = @{
+        CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
+        DeviceType                    = $GroupTag
+        EnableUserStatusTracking      = $true
+        EnableUserConfirmation        = $true
+        EnableProvisioningDiagnostics = $true
+        DeviceLicensingType           = "WindowsEnterprise"
+        Language                      = "en-GB"
+        SkipZDP                       = $true
+        SkipUserStatusPage            = $false
+        SkipAccountSetup              = $false
+        SkipOOBE                      = $false
+    }
+    $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
-    # === NEW SetupComplete.cmd ===
-    $PrimaryUserUPN = "fooUser@obg.co.uk"   # <-- change to the desired user
+    # === SetupComplete.cmd ===
+    $PrimaryUserUPN = "fooUser@obg.co.uk"
     $SetupCompletePath = "C:\Windows\Setup\Scripts\SetupComplete.cmd"
     $SetupCompleteContent = @"
 @echo off
 set LOGFILE=C:\Autopilot-AssignUser.txt
-set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
+set SCRIPT=\\$ServerIP\ReadOnlyShare\Get-WindowsAutoPilotInfo.ps1
 set GROUPTAG=$GroupTag
 set TENANT=c95ebf8f-ebb1-45ad-8ef4-463fa94051ee
 set APPID=faa1bc75-81c7-4750-ac62-1e5ea3ac48c5
@@ -76,14 +117,14 @@ echo ==== AUTOPILOT UPLOAD + USER ASSIGN ==== >> %LOGFILE%
 echo %DATE% %TIME% >> %LOGFILE%
 timeout /t 30 /nobreak > nul
 
-REM === Step 1: Upload hardware hash ===
+REM --- Upload hardware hash ---
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%" -TenantId %TENANT% -AppId %APPID% -AppSecret %APPSECRET% -GroupTag "%GROUPTAG%" -Online -Assign >> %LOGFILE% 2>&1
 if %ERRORLEVEL% neq 0 (
     echo ERROR: upload failed >> %LOGFILE%
     exit /b 1
 )
 
-REM === Step 2: Poll and assign primary user ===
+REM --- Poll and assign primary user ---
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
   "$Headers = @{ Authorization = ('Bearer ' + (Invoke-RestMethod -Method Post -Uri 'https://login.microsoftonline.com/%TENANT%/oauth2/v2.0/token' -Body @{client_id='%APPID%';scope='https://graph.microsoft.com/.default';client_secret='%APPSECRET%';grant_type='client_credentials'}).access_token) }; ^
    for(\$i=0;\$i -lt 20;\$i++){ ^
