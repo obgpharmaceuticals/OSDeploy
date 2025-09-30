@@ -138,7 +138,7 @@ echo Completed Autopilot upload + user assignment >> %LOGFILE%
     Set-Content -Path $SetupCompletePath -Value $SetupCompleteContent -Encoding ASCII
     Write-Host "SetupComplete.cmd created with user auto-assignment."
 
-    Restart-Computer -Force
+    # Restart-Computer -Force
 
 } catch {
     Write-Error "Deployment failed: $_"
