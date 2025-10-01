@@ -132,13 +132,13 @@ try {
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
   <settings pass="oobeSystem">
-    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <InputLocale>en-GB</InputLocale>
       <SystemLocale>en-GB</SystemLocale>
       <UILanguage>en-GB</UILanguage>
       <UserLocale>en-GB</UserLocale>
     </component>
-    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS" xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
       <OOBE>
         <HideEULAPage>true</HideEULAPage>
         <NetworkLocation>Work</NetworkLocation>
@@ -194,6 +194,14 @@ echo Completed Autopilot upload + user assignment >> %LOGFILE%
     New-Item -Path "HKLM:\SOFTWARE\OBG" -ErrorAction SilentlyContinue | Out-Null
     New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
+
+    # === Create first-logon scheduled task to launch Company Portal ===
+    $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument '-NoProfile -ExecutionPolicy Bypass -Command "$pkg = Get-AppxPackage -Name ''Microsoft.CompanyPortal''; if ($pkg) { Start-Process explorer.exe shell:AppsFolder\$($pkg.PackageFamilyName + ''!App'') }"'
+    $Trigger = New-ScheduledTaskTrigger -AtLogOn
+    $Principal = New-ScheduledTaskPrincipal -UserId "BUILTIN\Users" -RunLevel LeastPrivilege
+    Register-ScheduledTask -TaskName "LaunchCompanyPortalFirstLogin" -Action $Action -Trigger $Trigger -Principal $Principal -Description "Launch Company Portal at first login for all users" -Force
+
+    Write-Host "Company Portal first-login scheduled task created."
 
     Write-Host "Deployment complete. Rebooting..."
     Start-Sleep -Seconds 5
