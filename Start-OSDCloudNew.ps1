@@ -98,7 +98,7 @@ try {
     Copy-Item -Path $AutoPilotScriptURL -Destination $AutoPilotScriptPath -Force
 
     # === Copy Outlook New shortcut into C:\Autopilot (to persist until SetupComplete) ===
-    Copy-Item -Path "$DriveLetter\Outlook New.lnk" -Destination "C:\Autopilot\Outlook New.lnk" -Force
+    Copy-Item -Path "$DriveLetter\OutlookNew.lnk" -Destination "C:\Autopilot\OutlookNew.lnk" -Force
 
     # === Autopilot JSONs ===
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
@@ -172,7 +172,7 @@ set APPSECRET=ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-
 set ASSIGNUSER=$PrimaryUserUPN
 
 REM --- Move Outlook New shortcut into Startup ---
-move /Y "C:\Autopilot\Outlook New.lnk" "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp\"
+move /Y "C:\Autopilot\OutlookNew.lnk" "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp\"
 
 echo ==== AUTOPILOT UPLOAD + USER ASSIGN ==== >> %LOGFILE%
 echo %DATE% %TIME% >> %LOGFILE%
