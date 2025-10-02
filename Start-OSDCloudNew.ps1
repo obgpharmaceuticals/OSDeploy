@@ -195,14 +195,6 @@ echo Completed Autopilot upload + user assignment >> %LOGFILE%
     New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
 
-    # === Create first-logon scheduled task to launch Company Portal ===
-    $Action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument '-NoProfile -ExecutionPolicy Bypass -Command "$pkg = Get-AppxPackage -Name ''Microsoft.CompanyPortal''; if ($pkg) { Start-Process explorer.exe shell:AppsFolder\$($pkg.PackageFamilyName + ''!App'') }"'
-    $Trigger = New-ScheduledTaskTrigger -AtLogOn
-    $Principal = New-ScheduledTaskPrincipal -UserId "BUILTIN\Users" -RunLevel LeastPrivilege
-    Register-ScheduledTask -TaskName "LaunchCompanyPortalFirstLogin" -Action $Action -Trigger $Trigger -Principal $Principal -Description "Launch Company Portal at first login for all users" -Force
-
-    Write-Host "Company Portal first-login scheduled task created."
-
     Write-Host "Deployment complete. Rebooting..."
     Start-Sleep -Seconds 5
     Restart-Computer -Force
