@@ -83,13 +83,6 @@ try {
     if (-not (Test-Path "S:\EFI\Boot")) { New-Item -Path "S:\EFI\Boot" -ItemType Directory -Force | Out-Null }
     Copy-Item -Path "S:\EFI\Microsoft\Boot\bootmgfw.efi" -Destination "S:\EFI\Boot\bootx64.efi" -Force
 
-    # === Copy Outlook New shortcut into Startup ===
-    $StartupPath = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp"
-    if (-not (Test-Path $StartupPath)) {
-        New-Item -Path $StartupPath -ItemType Directory -Force | Out-Null
-    }
-    Copy-Item -Path "M:\Outlook New.lnk" -Destination $StartupPath -Force
-
     # === Ensure required folders exist ===
     $Folders = @(
         "C:\Windows\Panther\Unattend",
@@ -103,6 +96,9 @@ try {
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
     $AutoPilotScriptURL  = "$DriveLetter\Get-WindowsAutoPilotInfo.ps1"
     Copy-Item -Path $AutoPilotScriptURL -Destination $AutoPilotScriptPath -Force
+
+    # === Copy Outlook New shortcut into C:\Autopilot (to persist until SetupComplete) ===
+    Copy-Item -Path "$DriveLetter\Outlook New.lnk" -Destination "C:\Autopilot\Outlook New.lnk" -Force
 
     # === Autopilot JSONs ===
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
@@ -174,6 +170,9 @@ set TENANT=c95ebf8f-ebb1-45ad-8ef4-463fa94051ee
 set APPID=faa1bc75-81c7-4750-ac62-1e5ea3ac48c5
 set APPSECRET=ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-
 set ASSIGNUSER=$PrimaryUserUPN
+
+REM --- Move Outlook New shortcut into Startup ---
+move /Y "C:\Autopilot\Outlook New.lnk" "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp\"
 
 echo ==== AUTOPILOT UPLOAD + USER ASSIGN ==== >> %LOGFILE%
 echo %DATE% %TIME% >> %LOGFILE%
