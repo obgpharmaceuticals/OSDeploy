@@ -83,6 +83,13 @@ try {
     if (-not (Test-Path "S:\EFI\Boot")) { New-Item -Path "S:\EFI\Boot" -ItemType Directory -Force | Out-Null }
     Copy-Item -Path "S:\EFI\Microsoft\Boot\bootmgfw.efi" -Destination "S:\EFI\Boot\bootx64.efi" -Force
 
+    # === Copy Outlook New shortcut into Startup ===
+    $StartupPath = "C:\ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp"
+    if (-not (Test-Path $StartupPath)) {
+        New-Item -Path $StartupPath -ItemType Directory -Force | Out-Null
+    }
+    Copy-Item -Path "M:\Outlook New.lnk" -Destination $StartupPath -Force
+
     # === Ensure required folders exist ===
     $Folders = @(
         "C:\Windows\Panther\Unattend",
