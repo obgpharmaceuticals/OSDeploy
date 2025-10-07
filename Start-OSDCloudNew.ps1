@@ -184,9 +184,6 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
       Start-Sleep -Seconds 15 ^
    }" >> %LOGFILE% 2>&1
 
-REM --- Refresh Azure AD device join in background ---
-start /b "" dsregcmd /refreshprt
-
 echo Completed Autopilot upload + user assignment >> %LOGFILE%
 "@
     Set-Content -Path "C:\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupCompleteContent -Encoding ASCII
@@ -197,6 +194,10 @@ echo Completed Autopilot upload + user assignment >> %LOGFILE%
     New-Item -Path "HKLM:\SOFTWARE\OBG" -ErrorAction SilentlyContinue | Out-Null
     New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
+
+    # === Refresh PRT so Work/School account works immediately ===
+    Write-Host "Refreshing device PRT..."
+    Start-Process -FilePath "dsregcmd.exe" -ArgumentList "/refreshprt" -Wait
 
     Write-Host "Deployment complete. Rebooting..."
     Start-Sleep -Seconds 5
