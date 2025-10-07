@@ -184,6 +184,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
       Start-Sleep -Seconds 15 ^
    }" >> %LOGFILE% 2>&1
 
+REM --- Auto-provision Work/School account silently ---
+set WORKLOG=C:\Autopilot-WorkplaceAccount.txt
+echo ==== WORKPLACE ACCOUNT PROVISION ==== >> %WORKLOG%
+echo %DATE% %TIME% >> %WORKLOG%
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+"Try { Add-WorkAccount -UserPrincipalName '%ASSIGNUSER%' -IdentityProvider 'AzureAD'; Write-Output 'Work/School account added successfully.' | Out-File -FilePath '%WORKLOG%' -Append } Catch { Write-Output ('Error adding Work/School account: ' + $_.Exception.Message) | Out-File -FilePath '%WORKLOG%' -Append }"
+
 echo Completed Autopilot upload + user assignment >> %LOGFILE%
 "@
     Set-Content -Path "C:\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupCompleteContent -Encoding ASCII
