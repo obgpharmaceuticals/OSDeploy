@@ -184,8 +184,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
       Start-Sleep -Seconds 15 ^
    }" >> %LOGFILE% 2>&1
 
-REM --- Add RunOnce to refresh Azure AD device join ---
-reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\RunOnce" /v "RefreshAADJoin" /t REG_SZ /d "cmd /c dsregcmd /refreshprt" /f
+REM --- Refresh Azure AD device join in background ---
+start /b "" dsregcmd /refreshprt
 
 echo Completed Autopilot upload + user assignment >> %LOGFILE%
 "@
@@ -205,3 +205,5 @@ echo Completed Autopilot upload + user assignment >> %LOGFILE%
 } catch {
     Write-Error "Deployment failed: $_"
 } finally {
+    try { Stop-Transcript } catch {}
+}
