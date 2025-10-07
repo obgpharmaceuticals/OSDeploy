@@ -195,10 +195,6 @@ echo Completed Autopilot upload + user assignment >> %LOGFILE%
     New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
 
-    # === Refresh PRT so Work/School account works immediately ===
-    Write-Host "Refreshing device PRT..."
-    Start-Process -FilePath "dsregcmd.exe" -ArgumentList "/refreshprt" -Wait
-
     Write-Host "Deployment complete. Rebooting..."
     Start-Sleep -Seconds 5
     Restart-Computer -Force
