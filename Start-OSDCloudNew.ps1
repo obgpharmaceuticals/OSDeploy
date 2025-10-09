@@ -4,6 +4,8 @@ Start-Transcript -Path "X:\DeployScript.log" -Append
 try {
     Write-Host "Starting Windows 11 deployment..." -ForegroundColor Cyan
 
+
+    
     # Prompt for system type
     Write-Host "Select system type:"
     Write-Host "1. Productivity Desktop"
@@ -194,8 +196,9 @@ echo Completed Autopilot upload + user assignment >> %LOGFILE%
     New-Item -Path "HKLM:\SOFTWARE\OBG" -ErrorAction SilentlyContinue | Out-Null
     New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
-
-    Write-Host "Deployment complete. Rebooting..."
+    Save-FeatureUpdate
+    Add-WindowsDriver
+    Write-Host "Drivers a features updated. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     Restart-Computer -Force
 
