@@ -198,7 +198,7 @@ echo Completed Autopilot upload + user assignment >> %LOGFILE%
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
     Import-Module "C:\Windows\System32\WindowsPowerShell\v1.0\Modules\OSDCloud\OSDCloud.psd1" -Force
     Save-FeatureUpdate
-    Add-WindowsDriver
+    Save-MyDriverPack
     Write-Host "Drivers a features updated. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     Restart-Computer -Force
