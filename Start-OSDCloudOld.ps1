@@ -126,7 +126,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Autopilot\Get-Window
 
     Write-Host "Deployment complete. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    Restart-Computer -Force
+    # Restart-Computer -Force
 
 } catch {
     Write-Error "Deployment failed: $_"
