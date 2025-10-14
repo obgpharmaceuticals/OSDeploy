@@ -175,13 +175,6 @@ timeout /t 30 /nobreak > nul
 REM --- Delay to ensure deployment folders are available ---
 timeout /t 10 /nobreak > nul
 
-REM --- Install latest OSDCloud module and expand staged driver pack ---
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-  "Set-ExecutionPolicy Bypass -Scope Process -Force; ^
-   Install-Module OSDCloud -Force -AllowClobber -SkipPublisherCheck; ^
-   Import-Module OSDCloud; ^
-   Add-StagedDriverPack.specialize" >> %LOGFILE% 2>&1
-
 REM --- Upload hardware hash and assign user ---
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%" -TenantId %TENANT% -AppId %APPID% -AppSecret %APPSECRET% -GroupTag "%GROUPTAG%" -Online -Assign >> %LOGFILE% 2>&1
 
@@ -204,6 +197,10 @@ echo Completed Autopilot upload + user assignment >> %LOGFILE%
     New-Item -Path "HKLM:\SOFTWARE\OBG" -ErrorAction SilentlyContinue | Out-Null
     New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
+    Remove-Item "X:\windows\system32\WindowsPowerShell\v1.0\Modules\OSDCloud\25.6.15.1\" -recurse -force
+    Set-ExecutionPolicy Bypass -Scope Process -Force
+    Install-Module OSDCloud -Force -AllowClobber -SkipPublisherCheck
+    Import-Module OSDCloud
     Save-MyDriverPack -expand
     Write-Host "Drivers and features updated. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
