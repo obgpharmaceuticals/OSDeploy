@@ -197,7 +197,6 @@ echo Completed Autopilot upload + user assignment >> %LOGFILE%
     New-Item -Path "HKLM:\SOFTWARE\OBG" -ErrorAction SilentlyContinue | Out-Null
     New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
-    Remove-Item "X:\windows\system32\WindowsPowerShell\v1.0\Modules\OSDCloud\25.6.15.1\" -recurse -force
     Set-ExecutionPolicy Bypass -Scope Process -Force
     Install-Module OSDCloud -Force -AllowClobber -SkipPublisherCheck
     Import-Module OSDCloud
