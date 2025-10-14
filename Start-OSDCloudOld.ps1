@@ -4,8 +4,6 @@ Start-Transcript -Path "X:\DeployScript.log" -Append
 try {
     Write-Host "Starting Windows 11 deployment..." -ForegroundColor Cyan
 
-
-    
     # Prompt for system type
     Write-Host "Select system type:"
     Write-Host "1. Productivity Desktop"
@@ -174,6 +172,16 @@ echo ==== AUTOPILOT UPLOAD + USER ASSIGN ==== >> %LOGFILE%
 echo %DATE% %TIME% >> %LOGFILE%
 timeout /t 30 /nobreak > nul
 
+REM --- Delay to ensure deployment folders are available ---
+timeout /t 10 /nobreak > nul
+
+REM --- Install latest OSDCloud module and expand staged driver pack ---
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+  "Set-ExecutionPolicy Bypass -Scope Process -Force; ^
+   Install-Module OSDCloud -Force -AllowClobber -SkipPublisherCheck; ^
+   Import-Module OSDCloud; ^
+   Add-StagedDriverPack.specialize" >> %LOGFILE% 2>&1
+
 REM --- Upload hardware hash and assign user ---
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%" -TenantId %TENANT% -AppId %APPID% -AppSecret %APPSECRET% -GroupTag "%GROUPTAG%" -Online -Assign >> %LOGFILE% 2>&1
 
@@ -197,7 +205,7 @@ echo Completed Autopilot upload + user assignment >> %LOGFILE%
     New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
     Save-MyDriverPack -expand
-    Write-Host "Drivers a features updated. Rebooting in 5 seconds..."
+    Write-Host "Drivers and features updated. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     # Restart-Computer -Force
 
