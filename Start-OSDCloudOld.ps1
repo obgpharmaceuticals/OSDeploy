@@ -172,9 +172,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%" -TenantId %TE
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
 "$Headers = @{ Authorization = ('Bearer ' + (Invoke-RestMethod -Method Post -Uri 'https://login.microsoftonline.com/%TENANT%/oauth2/v2.0/token' -Body @{client_id='%APPID%';scope='https://graph.microsoft.com/.default';client_secret='%APPSECRET%';grant_type='client_credentials'}).access_token) }; ^
 for(\$i=0;\$i -lt 20;\$i++){ ^
-  \$d=Invoke-RestMethod -Headers \$Headers -Uri 'https://graph.microsoft.com/beta/deviceManagement/importedWindowsAutopilotDeviceIdentities' | Select-Object -ExpandProperty value | Where-Object { \$_.groupTag -eq '%GROUPTAG%' }; ^
-  if(\$d){ Invoke-RestMethod -Headers \$Headers -Method Post -Uri ('https://graph.microsoft.com/beta/deviceManagement/importedWindowsAutopilotDeviceIdentities/'+\$d.id+'/assignUserToDevice') -Body (@{userPrincipalName='%ASSIGNUSER%'} | ConvertTo-Json) -ContentType 'application/json'; break } ^
-  Start-Sleep -Seconds 15 ^
+\$d=Invoke-RestMethod -Headers \$Headers -Uri 'https://graph.microsoft.com/beta/deviceManagement/importedWindowsAutopilotDeviceIdentities' | Select-Object -ExpandProperty value | Where-Object { \$_.groupTag -eq '%GROUPTAG%' }; ^
+if(\$d){ Invoke-RestMethod -Headers \$Headers -Method Post -Uri ('https://graph.microsoft.com/beta/deviceManagement/importedWindowsAutopilotDeviceIdentities/'+\$d.id+'/assignUserToDevice') -Body (@{userPrincipalName='%ASSIGNUSER%'} | ConvertTo-Json) -ContentType 'application/json'; break } ^
+Start-Sleep -Seconds 15 ^
 }" >> %LOGFILE% 2>&1
 
 echo Completed Autopilot upload + user assignment >> %LOGFILE%
@@ -194,19 +194,6 @@ echo Completed Autopilot upload + user assignment >> %LOGFILE%
 
     # THIS IS IMPORTANT: Save-MyDriverPack STAYS HERE
     Save-MyDriverPack -expand
-
-    # === NEW: Create registry key for first-boot driver expansion ===
-    $DriverJson = Get-ChildItem "C:\Drivers" -Filter "*.json" | Select-Object -First 1
-    if ($DriverJson) {
-        New-Item -Path "HKLM:\SOFTWARE\OSDCloud\Drivers\Pending" -Force | Out-Null
-        New-ItemProperty -Path "HKLM:\SOFTWARE\OSDCloud\Drivers\Pending" `
-                         -Name "DriverPack1" `
-                         -Value $DriverJson.FullName `
-                         -PropertyType String -Force | Out-Null
-        Write-Host "OSDCloud first-boot driver expansion registry key created."
-    } else {
-        Write-Warning "No driver JSON found in C:\Drivers. First-boot expansion will not run."
-    }
 
     Write-Host "Drivers and features updated. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
