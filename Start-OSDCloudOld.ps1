@@ -154,33 +154,23 @@ try {
     $PrimaryUserUPN = "fooUser@obg.co.uk" # <-- replace with desired user
     $SetupCompleteContent = @"
 @echo off
-set LOGFILE=C:\Autopilot-AssignUser.txt
-set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
-set GROUPTAG=$GroupTag
-set TENANT=c95ebf8f-ebb1-45ad-8ef4-463fa94051ee
-set APPID=faa1bc75-81c7-4750-ac62-1e5ea3ac48c5
-set APPSECRET=ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-
-set ASSIGNUSER=$PrimaryUserUPN
+REM Create log folder
+if not exist C:\SetupLogs mkdir C:\SetupLogs
+set LOGFILE=C:\SetupLogs\SetupComplete.log
 
+REM AUTOPILOT UPLOAD + USER ASSIGN
 echo ==== AUTOPILOT UPLOAD + USER ASSIGN ==== >> %LOGFILE%
 echo %DATE% %TIME% >> %LOGFILE%
 timeout /t 30 /nobreak > nul
 timeout /t 10 /nobreak > nul
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%" -TenantId %TENANT% -AppId %APPID% -AppSecret %APPSECRET% -GroupTag "%GROUPTAG%" -Online -Assign >> %LOGFILE% 2>&1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1" -TenantId c95ebf8f-ebb1-45ad-8ef4-463fa94051ee -AppId faa1bc75-81c7-4750-ac62-1e5ea3ac48c5 -AppSecret ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB- -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-"$Headers = @{ Authorization = ('Bearer ' + (Invoke-RestMethod -Method Post -Uri 'https://login.microsoftonline.com/%TENANT%/oauth2/v2.0/token' -Body @{client_id='%APPID%';scope='https://graph.microsoft.com/.default';client_secret='%APPSECRET%';grant_type='client_credentials'}).access_token) }; ^
-for(\$i=0;\$i -lt 20;\$i++){ ^
-\$d=Invoke-RestMethod -Headers \$Headers -Uri 'https://graph.microsoft.com/beta/deviceManagement/importedWindowsAutopilotDeviceIdentities' | Select-Object -ExpandProperty value | Where-Object { \$_.groupTag -eq '%GROUPTAG%' }; ^
-if(\$d){ Invoke-RestMethod -Headers \$Headers -Method Post -Uri ('https://graph.microsoft.com/beta/deviceManagement/importedWindowsAutopilotDeviceIdentities/'+\$d.id+'/assignUserToDevice') -Body (@{userPrincipalName='%ASSIGNUSER%'} | ConvertTo-Json) -ContentType 'application/json'; break } ^
-Start-Sleep -Seconds 15 ^
-}" >> %LOGFILE% 2>&1
-
+REM EXPAND DRIVER PACKS
 echo ==== EXPAND DRIVER PACKS ==== >> %LOGFILE%
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Import-Module OSD; Expand-StagedDriverPack" >> %LOGFILE% 2>&1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Save-MyDriverPack -Expand; Expand-StagedDriverPack" >> %LOGFILE% 2>&1
 
-echo Completed Autopilot upload + user assignment >> %LOGFILE%
+echo Completed Autopilot upload + user assignment and driver expansion >> %LOGFILE%
 "@
     Set-Content -Path "C:\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupCompleteContent -Encoding ASCII
     Write-Host "SetupComplete.cmd created successfully."
