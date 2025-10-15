@@ -187,10 +187,6 @@ echo Completed Autopilot upload + user assignment >> %LOGFILE%
     New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
 
-    # --- Install OSDCloud and save drivers (KEEP HERE) ---
-    Set-ExecutionPolicy Bypass -Scope Process -Force
-    Install-Module OSDCloud -Force -AllowClobber -SkipPublisherCheck
-    Import-Module OSDCloud
 
     # THIS IS IMPORTANT: Save-MyDriverPack STAYS HERE
     Save-MyDriverPack -expand
