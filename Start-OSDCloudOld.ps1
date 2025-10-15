@@ -177,6 +177,9 @@ if(\$d){ Invoke-RestMethod -Headers \$Headers -Method Post -Uri ('https://graph.
 Start-Sleep -Seconds 15 ^
 }" >> %LOGFILE% 2>&1
 
+echo ==== EXPAND DRIVER PACKS ==== >> %LOGFILE%
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Import-Module OSD; Expand-StagedDriverPack" >> %LOGFILE% 2>&1
+
 echo Completed Autopilot upload + user assignment >> %LOGFILE%
 "@
     Set-Content -Path "C:\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupCompleteContent -Encoding ASCII
@@ -186,7 +189,6 @@ echo Completed Autopilot upload + user assignment >> %LOGFILE%
     New-Item -Path "HKLM:\SOFTWARE\OBG" -ErrorAction SilentlyContinue | Out-Null
     New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
-
 
     # THIS IS IMPORTANT: Save-MyDriverPack STAYS HERE
     Save-MyDriverPack -expand
