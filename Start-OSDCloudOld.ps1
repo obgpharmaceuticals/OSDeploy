@@ -175,16 +175,23 @@ timeout /t 30 /nobreak > nul
 REM --- Delay to ensure deployment folders are available ---
 timeout /t 10 /nobreak > nul
 
+REM --- Install latest OSDCloud module and expand staged driver pack ---
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+  "Set-ExecutionPolicy Bypass -Scope Process -Force; ^
+   Install-Module OSDCloud -Force -AllowClobber -SkipPublisherCheck; ^
+   Import-Module OSDCloud; ^
+   Add-StagedDriverPack.specialize" >> %LOGFILE% 2>&1
+
 REM --- Upload hardware hash and assign user ---
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%" -TenantId %TENANT% -AppId %APPID% -AppSecret %APPSECRET% -GroupTag "%GROUPTAG%" -Online -Assign >> %LOGFILE% 2>&1
 
 REM --- Poll imported devices and assign primary user ---
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^ 
-  "$Headers = @{ Authorization = ('Bearer ' + (Invoke-RestMethod -Method Post -Uri 'https://login.microsoftonline.com/%TENANT%/oauth2/v2.0/token' -Body @{client_id='%APPID%';scope='https://graph.microsoft.com/.default';client_secret='%APPSECRET%';grant_type='client_credentials'}).access_token) }; ^ 
-   for(\$i=0;\$i -lt 20;\$i++){ ^ 
-      \$d=Invoke-RestMethod -Headers \$Headers -Uri 'https://graph.microsoft.com/beta/deviceManagement/importedWindowsAutopilotDeviceIdentities' | Select-Object -ExpandProperty value | Where-Object { \$_.groupTag -eq '%GROUPTAG%' }; ^ 
-      if(\$d){ Invoke-RestMethod -Headers \$Headers -Method Post -Uri ('https://graph.microsoft.com/beta/deviceManagement/importedWindowsAutopilotDeviceIdentities/'+\$d.id+'/assignUserToDevice') -Body (@{userPrincipalName='%ASSIGNUSER%'} | ConvertTo-Json) -ContentType 'application/json'; break } ^ 
-      Start-Sleep -Seconds 15 ^ 
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+  "$Headers = @{ Authorization = ('Bearer ' + (Invoke-RestMethod -Method Post -Uri 'https://login.microsoftonline.com/%TENANT%/oauth2/v2.0/token' -Body @{client_id='%APPID%';scope='https://graph.microsoft.com/.default';client_secret='%APPSECRET%';grant_type='client_credentials'}).access_token) }; ^
+   for(\$i=0;\$i -lt 20;\$i++){ ^
+      \$d=Invoke-RestMethod -Headers \$Headers -Uri 'https://graph.microsoft.com/beta/deviceManagement/importedWindowsAutopilotDeviceIdentities' | Select-Object -ExpandProperty value | Where-Object { \$_.groupTag -eq '%GROUPTAG%' }; ^
+      if(\$d){ Invoke-RestMethod -Headers \$Headers -Method Post -Uri ('https://graph.microsoft.com/beta/deviceManagement/importedWindowsAutopilotDeviceIdentities/'+\$d.id+'/assignUserToDevice') -Body (@{userPrincipalName='%ASSIGNUSER%'} | ConvertTo-Json) -ContentType 'application/json'; break } ^
+      Start-Sleep -Seconds 15 ^
    }" >> %LOGFILE% 2>&1
 
 echo Completed Autopilot upload + user assignment >> %LOGFILE%
@@ -198,29 +205,7 @@ echo Completed Autopilot upload + user assignment >> %LOGFILE%
     New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
 
-    # === OSDCloud driver pack staging + manual XML creation ===
-    Set-ExecutionPolicy Bypass -Scope Process -Force
-    Install-Module OSDCloud -Force -AllowClobber -SkipPublisherCheck
-    Import-Module OSDCloud -Force
-
-    Write-Host "Saving driver pack..."
-    Save-MyDriverPack -Expand
-
-    # --- MANUALLY create Expand-StagedDriverPack.xml in Panther ---
-    $DriverPackXML = @"
-<?xml version="1.0" encoding="UTF-8"?>
-<DriverPack>
-    <DriverPath>C:\Drivers</DriverPath>
-    <FirstBoot>true</FirstBoot>
-</DriverPack>
-"@
-    $XMLPath = "C:\Windows\Panther\Expand-StagedDriverPack.xml"
-    Set-Content -Path $XMLPath -Value $DriverPackXML -Encoding UTF8
-    Write-Host "Expand-StagedDriverPack.xml created at $XMLPath"
-
-    Write-Host "Drivers staged successfully."
-
-    Write-Host "Deployment complete. Rebooting in 5 seconds..."
+    Write-Host "Drivers injected. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     # Restart-Computer -Force
 
