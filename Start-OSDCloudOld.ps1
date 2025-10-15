@@ -195,6 +195,19 @@ echo Completed Autopilot upload + user assignment >> %LOGFILE%
     # THIS IS IMPORTANT: Save-MyDriverPack STAYS HERE
     Save-MyDriverPack -expand
 
+    # === NEW: Create registry key for first-boot driver expansion ===
+    $DriverJson = Get-ChildItem "C:\Drivers" -Filter "*.json" | Select-Object -First 1
+    if ($DriverJson) {
+        New-Item -Path "HKLM:\SOFTWARE\OSDCloud\Drivers\Pending" -Force | Out-Null
+        New-ItemProperty -Path "HKLM:\SOFTWARE\OSDCloud\Drivers\Pending" `
+                         -Name "DriverPack1" `
+                         -Value $DriverJson.FullName `
+                         -PropertyType String -Force | Out-Null
+        Write-Host "OSDCloud first-boot driver expansion registry key created."
+    } else {
+        Write-Warning "No driver JSON found in C:\Drivers. First-boot expansion will not run."
+    }
+
     Write-Host "Drivers and features updated. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     # Restart-Computer -Force
