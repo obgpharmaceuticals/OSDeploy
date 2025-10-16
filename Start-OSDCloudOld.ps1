@@ -76,7 +76,7 @@ try {
     Copy-Item -Path "S:\EFI\Microsoft\Boot\bootmgfw.efi" -Destination "S:\EFI\Boot\bootx64.efi" -Force
 
     # === Ensure required folders exist ===
-    $Folders = @( "C:\Windows\Panther\Unattend", "C:\Windows\Setup\Scripts", "C:\Autopilot", "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot" )
+    $Folders = @( "C:\Windows\Panther\Unattend", "C:\Windows\Setup\Scripts", "C:\Autopilot", "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot", "C:\Drivers" )
     foreach ($Folder in $Folders) {
         if (-not (Test-Path $Folder)) { New-Item -Path $Folder -ItemType Directory -Force | Out-Null }
     }
@@ -170,7 +170,21 @@ REM EXPAND DRIVER PACKS
 echo ==== EXPAND DRIVER PACKS ==== >> %LOGFILE%
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Save-MyDriverPack -Expand; Expand-StagedDriverPack" >> %LOGFILE% 2>&1
 
-echo Completed Autopilot upload + user assignment and driver expansion >> %LOGFILE%
+REM ADD DRIVERS TO DRIVERSTORE
+echo ==== ADD DRIVERS TO DRIVERSTORE ==== >> %LOGFILE%
+for /R C:\Drivers %%G in (*.inf) do (
+    echo Adding driver %%G >> %LOGFILE%
+    pnputil /add-driver "%%G" /install /subdirs /quiet >> %LOGFILE% 2>&1
+)
+
+REM WINDOWS UPDATE
+echo ==== INSTALL WINDOWS UPDATES ==== >> %LOGFILE%
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
+"Install-Module PSWindowsUpdate -Force; ^
+Import-Module PSWindowsUpdate; ^
+Get-WindowsUpdate -AcceptAll -Install -IgnoreReboot" >> %LOGFILE% 2>&1
+
+echo Completed Autopilot upload + user assignment, driver expansion, DriverStore injection, and Windows updates >> %LOGFILE%
 "@
     Set-Content -Path "C:\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupCompleteContent -Encoding ASCII
     Write-Host "SetupComplete.cmd created successfully."
