@@ -1,17 +1,16 @@
-# Start transcript logging 
+# Start transcript logging
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
     Write-Host "Starting Windows 11 deployment..." -ForegroundColor Cyan
 
-
-    
     # Prompt for system type
     Write-Host "Select system type:"
     Write-Host "1. Productivity Desktop"
     Write-Host "2. Productivity Laptop"
     Write-Host "3. Line of Business Desktop"
     $selection = Read-Host "Enter choice (1-3)"
+
     switch ($selection) {
         '1' { $GroupTag = "ProductivityDesktop11" }
         '2' { $GroupTag = "ProductivityLaptop11" }
@@ -24,10 +23,7 @@ try {
     Write-Host "GroupTag set to: $GroupTag"
 
     # === Disk preparation ===
-    $Disk = Get-Disk | Where-Object {
-        $_.IsSystem -eq $false -and $_.OperationalStatus -eq "Online" -and
-        $_.BusType -in @("NVMe","SATA","SCSI","ATA")
-    } | Sort-Object -Property Size -Descending | Select-Object -First 1
+    $Disk = Get-Disk | Where-Object { $_.IsSystem -eq $false -and $_.OperationalStatus -eq "Online" -and $_.BusType -in @("NVMe","SATA","SCSI","ATA") } | Sort-Object -Property Size -Descending | Select-Object -First 1
     if (-not $Disk) { throw "No suitable disk found." }
     $DiskNumber = $Disk.Number
 
@@ -51,11 +47,7 @@ try {
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
 
     # === Map deployment share and apply WIM ===
-    $ClientIP = (Get-WmiObject Win32_NetworkAdapterConfiguration |
-                 Where-Object { $_.IPEnabled -eq $true -and $_.IPAddress -ne $null } |
-                 ForEach-Object { $_.IPAddress } |
-                 Where-Object { $_ -notlike "169.*" -and $_ -ne "127.0.0.1" } |
-                 Select-Object -First 1)
+    $ClientIP = (Get-WmiObject Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled -eq $true -and $_.IPAddress -ne $null } | ForEach-Object { $_.IPAddress } | Where-Object { $_ -notlike "169.*" -and $_ -ne "127.0.0.1" } | Select-Object -First 1)
     if (-not $ClientIP) { throw "Could not determine client IP address." }
 
     $DeploymentServers = @{
@@ -64,9 +56,7 @@ try {
         "10.5.192" = "10.5.192.20"
     }
     $Subnet = ($ClientIP -split "\.")[0..2] -join "."
-    if ($DeploymentServers.ContainsKey($Subnet)) {
-        $ServerIP = $DeploymentServers[$Subnet]
-    } else { throw "No deployment server configured for subnet $Subnet" }
+    if ($DeploymentServers.ContainsKey($Subnet)) { $ServerIP = $DeploymentServers[$Subnet] } else { throw "No deployment server configured for subnet $Subnet" }
 
     $NetworkPath = "\\$ServerIP\ReadOnlyShare"
     $DriveLetter = "M:"
@@ -86,45 +76,47 @@ try {
     Copy-Item -Path "S:\EFI\Microsoft\Boot\bootmgfw.efi" -Destination "S:\EFI\Boot\bootx64.efi" -Force
 
     # === Ensure required folders exist ===
-    $Folders = @(
-        "C:\Windows\Panther\Unattend",
-        "C:\Windows\Setup\Scripts",
-        "C:\Autopilot",
-        "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
-    )
-    foreach ($Folder in $Folders) { if (-not (Test-Path $Folder)) { New-Item -Path $Folder -ItemType Directory -Force | Out-Null } }
+    $Folders = @( "C:\Windows\Panther\Unattend", "C:\Windows\Setup\Scripts", "C:\Autopilot", "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot", "C:\Drivers" )
+    foreach ($Folder in $Folders) {
+        if (-not (Test-Path $Folder)) { New-Item -Path $Folder -ItemType Directory -Force | Out-Null }
+    }
 
     # === Copy Autopilot script from network share ===
     $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
-    $AutoPilotScriptURL  = "$DriveLetter\Get-WindowsAutoPilotInfo.ps1"
+    $AutoPilotScriptURL = "$DriveLetter\Get-WindowsAutoPilotInfo.ps1"
     Copy-Item -Path $AutoPilotScriptURL -Destination $AutoPilotScriptPath -Force
 
     # === Autopilot JSONs ===
     $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
     $AutopilotConfig = @{
-        CloudAssignedTenantId    = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantId = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
         CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        GroupTag                 = $GroupTag
+        GroupTag = $GroupTag
     }
     $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
 
     $OOBEJson = @{
-        CloudAssignedTenantId         = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
-        CloudAssignedTenantDomain     = "obgpharma.onmicrosoft.com"
-        DeviceType                    = $GroupTag
-        EnableUserStatusTracking      = $true
-        EnableUserConfirmation        = $true
+        CloudAssignedTenantId = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
+        CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
+        DeviceType = $GroupTag
+        EnableUserStatusTracking = $true
+        EnableUserConfirmation = $true
         EnableProvisioningDiagnostics = $true
-        DeviceLicensingType           = "WindowsEnterprise"
-        Language                      = "en-GB"
-        SkipZDP                       = $true
-        SkipUserStatusPage            = $false
-        SkipAccountSetup              = $false
-        SkipOOBE                      = $false
-        RemovePreInstalledApps        = @(
-            "Microsoft.ZuneMusic", "Microsoft.XboxApp", "Microsoft.XboxGameOverlay",
-            "Microsoft.XboxGamingOverlay", "Microsoft.XboxSpeechToTextOverlay",
-            "Microsoft.YourPhone", "Microsoft.Getstarted", "Microsoft.3DBuilder"
+        DeviceLicensingType = "WindowsEnterprise"
+        Language = "en-GB"
+        SkipZDP = $true
+        SkipUserStatusPage = $false
+        SkipAccountSetup = $false
+        SkipOOBE = $false
+        RemovePreInstalledApps = @(
+            "Microsoft.ZuneMusic",
+            "Microsoft.XboxApp",
+            "Microsoft.XboxGameOverlay",
+            "Microsoft.XboxGamingOverlay",
+            "Microsoft.XboxSpeechToTextOverlay",
+            "Microsoft.YourPhone",
+            "Microsoft.Getstarted",
+            "Microsoft.3DBuilder"
         )
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
@@ -133,73 +125,79 @@ try {
     $UnattendXml = @"
 <?xml version="1.0" encoding="utf-8"?>
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
-  <settings pass="oobeSystem">
-    <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <InputLocale>en-GB</InputLocale>
-      <SystemLocale>en-GB</SystemLocale>
-      <UILanguage>en-GB</UILanguage>
-      <UserLocale>en-GB</UserLocale>
-    </component>
-    <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-      <OOBE>
-        <HideEULAPage>true</HideEULAPage>
-        <NetworkLocation>Work</NetworkLocation>
-        <ProtectYourPC>1</ProtectYourPC>
-        <HideLocalAccountScreen>false</HideLocalAccountScreen>
-        <HideOEMRegistrationScreen>false</HideOEMRegistrationScreen>
-        <HideOnlineAccountScreens>false</HideOnlineAccountScreens>
-        <HideWirelessSetupInOOBE>false</HideWirelessSetupInOOBE>
-        <SkipUserOOBE>false</SkipUserOOBE>
-        <SkipMachineOOBE>false</SkipMachineOOBE>
-      </OOBE>
-    </component>
-  </settings>
+    <settings pass="oobeSystem">
+        <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+            <InputLocale>en-GB</InputLocale>
+            <SystemLocale>en-GB</SystemLocale>
+            <UILanguage>en-GB</UILanguage>
+            <UserLocale>en-GB</UserLocale>
+        </component>
+        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
+            <OOBE>
+                <HideEULAPage>true</HideEULAPage>
+                <NetworkLocation>Work</NetworkLocation>
+                <ProtectYourPC>1</ProtectYourPC>
+                <HideLocalAccountScreen>false</HideLocalAccountScreen>
+                <HideOEMRegistrationScreen>false</HideOEMRegistrationScreen>
+                <HideOnlineAccountScreens>false</HideOnlineAccountScreens>
+                <HideWirelessSetupInOOBE>false</HideWirelessSetupInOOBE>
+                <SkipUserOOBE>false</SkipUserOOBE>
+                <SkipMachineOOBE>false</SkipMachineOOBE>
+            </OOBE>
+        </component>
+    </settings>
 </unattend>
 "@
     Set-Content -Path "C:\Windows\Panther\Unattend\Unattend.xml" -Value $UnattendXml -Encoding UTF8
 
     # === SetupComplete.cmd ===
-    $PrimaryUserUPN = "fooUser@obg.co.uk"   # <-- replace with desired user
+    $PrimaryUserUPN = "fooUser@obg.co.uk" # <-- replace with desired user
     $SetupCompleteContent = @"
 @echo off
-set LOGFILE=C:\Autopilot-AssignUser.txt
-set SCRIPT=C:\Autopilot\Get-WindowsAutoPilotInfo.ps1
-set GROUPTAG=$GroupTag
-set TENANT=c95ebf8f-ebb1-45ad-8ef4-463fa94051ee
-set APPID=faa1bc75-81c7-4750-ac62-1e5ea3ac48c5
-set APPSECRET=ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB-
-set ASSIGNUSER=$PrimaryUserUPN
+REM Create log folder
+if not exist C:\SetupLogs mkdir C:\SetupLogs
+set LOGFILE=C:\SetupLogs\SetupComplete.log
 
+REM AUTOPILOT UPLOAD + USER ASSIGN
 echo ==== AUTOPILOT UPLOAD + USER ASSIGN ==== >> %LOGFILE%
 echo %DATE% %TIME% >> %LOGFILE%
 timeout /t 30 /nobreak > nul
+timeout /t 10 /nobreak > nul
 
-REM --- Upload hardware hash and assign user ---
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%" -TenantId %TENANT% -AppId %APPID% -AppSecret %APPSECRET% -GroupTag "%GROUPTAG%" -Online -Assign >> %LOGFILE% 2>&1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1" -TenantId c95ebf8f-ebb1-45ad-8ef4-463fa94051ee -AppId faa1bc75-81c7-4750-ac62-1e5ea3ac48c5 -AppSecret ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB- -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
 
-REM --- Poll imported devices and assign primary user ---
+REM EXPAND DRIVER PACKS
+echo ==== EXPAND DRIVER PACKS ==== >> %LOGFILE%
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Save-MyDriverPack -Expand; Expand-StagedDriverPack" >> %LOGFILE% 2>&1
+
+REM ADD DRIVERS TO DRIVERSTORE
+echo ==== ADD DRIVERS TO DRIVERSTORE ==== >> %LOGFILE%
+powershell -NoProfile -Command ^
+"Get-ChildItem -Path 'C:\Drivers\sccm' -Recurse -Filter '*.inf' | ForEach-Object { Write-Output 'Adding driver:' $_.FullName; Start-Process pnputil -ArgumentList '/add-driver', $_.FullName, '/install', '/subdirs', '/quiet' -Wait }" >> %LOGFILE% 2>&1
+
+REM WINDOWS UPDATE
+echo ==== INSTALL WINDOWS UPDATES ==== >> %LOGFILE%
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$Headers = @{ Authorization = ('Bearer ' + (Invoke-RestMethod -Method Post -Uri 'https://login.microsoftonline.com/%TENANT%/oauth2/v2.0/token' -Body @{client_id='%APPID%';scope='https://graph.microsoft.com/.default';client_secret='%APPSECRET%';grant_type='client_credentials'}).access_token) }; ^
-   for(\$i=0;\$i -lt 20;\$i++){ ^
-      \$d=Invoke-RestMethod -Headers \$Headers -Uri 'https://graph.microsoft.com/beta/deviceManagement/importedWindowsAutopilotDeviceIdentities' | Select-Object -ExpandProperty value | Where-Object { \$_.groupTag -eq '%GROUPTAG%' }; ^
-      if(\$d){ Invoke-RestMethod -Headers \$Headers -Method Post -Uri ('https://graph.microsoft.com/beta/deviceManagement/importedWindowsAutopilotDeviceIdentities/'+\$d.id+'/assignUserToDevice') -Body (@{userPrincipalName='%ASSIGNUSER%'} | ConvertTo-Json) -ContentType 'application/json'; break } ^
-      Start-Sleep -Seconds 15 ^
-   }" >> %LOGFILE% 2>&1
+"Install-Module PSWindowsUpdate -Force; ^
+Import-Module PSWindowsUpdate; ^
+Get-WindowsUpdate -AcceptAll -Install -IgnoreReboot" >> %LOGFILE% 2>&1
 
-echo Completed Autopilot upload + user assignment >> %LOGFILE%
+echo Completed Autopilot upload + user assignment, driver expansion, DriverStore injection, and Windows updates >> %LOGFILE%
 "@
     Set-Content -Path "C:\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupCompleteContent -Encoding ASCII
-
     Write-Host "SetupComplete.cmd created successfully."
 
     # --- Requirement flag for Win32 app ---
     New-Item -Path "HKLM:\SOFTWARE\OBG" -ErrorAction SilentlyContinue | Out-Null
     New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
+
+    # THIS IS IMPORTANT: Save-MyDriverPack STAYS HERE
     Save-MyDriverPack -expand
-    Write-Host "Drivers a features updated. Rebooting in 5 seconds..."
+
+    Write-Host "Drivers and features updated. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    Restart-Computer -Force
+    # Restart-Computer -Force
 
 } catch {
     Write-Error "Deployment failed: $_"
