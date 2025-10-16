@@ -172,8 +172,10 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Save-MyDriverPack -E
 
 REM ADD DRIVERS TO DRIVERSTORE
 echo ==== ADD DRIVERS TO DRIVERSTORE ==== >> %LOGFILE%
-powershell -NoProfile -Command ^
-"Get-ChildItem -Path 'C:\Drivers\sccm' -Recurse -Filter '*.inf' | ForEach-Object { Write-Output 'Adding driver:' $_.FullName; Start-Process pnputil -ArgumentList '/add-driver', $_.FullName, '/install', '/subdirs', '/quiet' -Wait }" >> %LOGFILE% 2>&1
+for /R C:\Drivers %%G in (*.inf) do (
+    echo Adding driver %%G >> %LOGFILE%
+    pnputil /add-driver "%%G" /install /subdirs /quiet >> %LOGFILE% 2>&1
+)
 
 REM WINDOWS UPDATE
 echo ==== INSTALL WINDOWS UPDATES ==== >> %LOGFILE%
