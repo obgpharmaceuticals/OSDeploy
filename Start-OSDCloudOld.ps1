@@ -168,7 +168,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Autopilot\Get-Window
 
 REM EXPAND DRIVER PACKS
 echo ==== EXPAND DRIVER PACKS ==== >> %LOGFILE%
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Save-MyDriverPack -Expand; Expand-StagedDriverPack" >> %LOGFILE% 2>&1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Expand-StagedDriverPack" >> %LOGFILE% 2>&1
 
 REM ADD DRIVERS TO DRIVERSTORE
 echo ==== ADD DRIVERS TO DRIVERSTORE ==== >> %LOGFILE%
