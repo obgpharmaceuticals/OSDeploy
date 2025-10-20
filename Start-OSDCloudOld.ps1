@@ -172,15 +172,15 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Expand-StagedDriverP
 
 REM ADD DRIVERS TO DRIVERSTORE
 echo ==== ADD DRIVERS TO DRIVERSTORE ==== >> %LOGFILE%
-powershell -NoProfile -Command ^
-"Get-ChildItem -Path 'C:\Drivers\sccm' -Recurse -Filter '*.inf' | ForEach-Object { Write-Output 'Adding driver:' $_.FullName; Start-Process pnputil -ArgumentList '/add-driver', $_.FullName, '/install', '/subdirs', '/quiet' -Wait }" >> %LOGFILE% 2>&1
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+"Get-ChildItem -Path 'C:\Drivers\sccm' -Recurse -Filter '*.inf' | ForEach-Object { ^
+    Write-Output ('Adding driver: ' + $_.FullName); ^
+    Start-Process pnputil.exe -ArgumentList '/add-driver', ('\"' + $_.FullName + '\"'), '/install' -Wait ^
+}" >> %LOGFILE% 2>&1
 
 REM WINDOWS UPDATE
 echo ==== INSTALL WINDOWS UPDATES ==== >> %LOGFILE%
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-"Install-Module PSWindowsUpdate -Force; ^
-Import-Module PSWindowsUpdate; ^
-Get-WindowsUpdate -AcceptAll -Install -IgnoreReboot" >> %LOGFILE% 2>&1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Install-Module PSWindowsUpdate -Force; Import-Module PSWindowsUpdate; Get-WindowsUpdate -AcceptAll -Install -IgnoreReboot" >> %LOGFILE% 2>&1
 
 echo Completed Autopilot upload + user assignment, driver expansion, DriverStore injection, and Windows updates >> %LOGFILE%
 "@
