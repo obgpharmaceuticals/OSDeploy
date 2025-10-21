@@ -67,7 +67,7 @@ try {
     if (-not (Test-Path $WimPath)) { throw "WIM file not found at $WimPath" }
 
     Write-Host "Applying Windows image..."
-    Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image","/ImageFile:$WimPath","/Index:6","/ApplyDir:C:\" -Wait -PassThru
+    Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image","/ImageFile:$WimPath","/Index:5","/ApplyDir:C:\" -Wait -PassThru
 
     # === Boot files ===
     if (-not (Test-Path "S:\EFI\Microsoft\Boot")) { New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null }
@@ -168,21 +168,15 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Autopilot\Get-Window
 
 REM EXPAND DRIVER PACKS
 echo ==== EXPAND DRIVER PACKS ==== >> %LOGFILE%
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Save-MyDriverPack -Expand; Expand-StagedDriverPack" >> %LOGFILE% 2>&1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Expand-StagedDriverPack" >> %LOGFILE% 2>&1
 
 REM ADD DRIVERS TO DRIVERSTORE
 echo ==== ADD DRIVERS TO DRIVERSTORE ==== >> %LOGFILE%
-for /R C:\Drivers %%G in (*.inf) do (
-    echo Adding driver %%G >> %LOGFILE%
-    pnputil /add-driver "%%G" /install /subdirs /quiet >> %LOGFILE% 2>&1
-)
+powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -Path 'C:\Drivers\sccm' -Recurse -Filter '*.inf' | ForEach-Object { Write-Output ('Adding driver: ' + $_.FullName); Start-Process pnputil.exe -ArgumentList '/add-driver', ('\"' + $_.FullName + '\"'), '/install' -Wait }" >> %LOGFILE% 2>&1
 
 REM WINDOWS UPDATE
 echo ==== INSTALL WINDOWS UPDATES ==== >> %LOGFILE%
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command ^
-"Install-Module PSWindowsUpdate -Force; ^
-Import-Module PSWindowsUpdate; ^
-Get-WindowsUpdate -AcceptAll -Install -IgnoreReboot" >> %LOGFILE% 2>&1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Install-Module PSWindowsUpdate -Force; Import-Module PSWindowsUpdate; Get-WindowsUpdate -AcceptAll -Install -IgnoreReboot" >> %LOGFILE% 2>&1
 
 echo Completed Autopilot upload + user assignment, driver expansion, DriverStore injection, and Windows updates >> %LOGFILE%
 "@
@@ -199,7 +193,7 @@ echo Completed Autopilot upload + user assignment, driver expansion, DriverStore
 
     Write-Host "Drivers and features updated. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    Restart-Computer -Force
+    # Restart-Computer -Force
 
 } catch {
     Write-Error "Deployment failed: $_"
