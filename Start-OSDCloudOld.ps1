@@ -67,7 +67,7 @@ try {
     if (-not (Test-Path $WimPath)) { throw "WIM file not found at $WimPath" }
 
     Write-Host "Applying Windows image..."
-    Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image","/ImageFile:$WimPath","/Index:5","/ApplyDir:C:\" -Wait -PassThru
+    Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image","/ImageFile:$WimPath","/Index:6","/ApplyDir:C:\" -Wait -PassThru
 
     # === Boot files ===
     if (-not (Test-Path "S:\EFI\Microsoft\Boot")) { New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null }
@@ -166,19 +166,13 @@ timeout /t 10 /nobreak > nul
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1" -TenantId c95ebf8f-ebb1-45ad-8ef4-463fa94051ee -AppId faa1bc75-81c7-4750-ac62-1e5ea3ac48c5 -AppSecret ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB- -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
 
-REM EXPAND DRIVER PACKS
-echo ==== EXPAND DRIVER PACKS ==== >> %LOGFILE%
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Expand-StagedDriverPack" >> %LOGFILE% 2>&1
-
-REM ADD DRIVERS TO DRIVERSTORE
-echo ==== ADD DRIVERS TO DRIVERSTORE ==== >> %LOGFILE%
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -Path 'C:\Drivers\sccm' -Recurse -Filter '*.inf' | ForEach-Object { Write-Output ('Adding driver: ' + $_.FullName); Start-Process pnputil.exe -ArgumentList '/add-driver', ('\"' + $_.FullName + '\"'), '/install' -Wait }" >> %LOGFILE% 2>&1
+REM DRIVER PACKS ALREADY INJECTED OFFLINE VIA Save-ZTIDriverPack
 
 REM WINDOWS UPDATE
 echo ==== INSTALL WINDOWS UPDATES ==== >> %LOGFILE%
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Install-Module PSWindowsUpdate -Force; Import-Module PSWindowsUpdate; Get-WindowsUpdate -AcceptAll -Install -IgnoreReboot" >> %LOGFILE% 2>&1
 
-echo Completed Autopilot upload + user assignment, driver expansion, DriverStore injection, and Windows updates >> %LOGFILE%
+echo Completed Autopilot upload, driver injection, and Windows updates >> %LOGFILE%
 "@
     Set-Content -Path "C:\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupCompleteContent -Encoding ASCII
     Write-Host "SetupComplete.cmd created successfully."
@@ -188,12 +182,25 @@ echo Completed Autopilot upload + user assignment, driver expansion, DriverStore
     New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
 
-    # THIS IS IMPORTANT: Save-MyDriverPack STAYS HERE
-    Save-MyDriverPack -expand
+    # --- DRIVER PACK DOWNLOAD + OFFLINE INJECTION (OSDCloud method) ---
+    Write-Host "Staging and injecting OEM driver pack..." -ForegroundColor Cyan
+
+    try {
+        if (-not (Get-Module -ListAvailable -Name OSD)) {
+            Import-Module "$PSScriptRoot\OSD.psm1" -ErrorAction SilentlyContinue
+        }
+
+        Save-ZTIDriverPack -Expand -Inject -Destination "C:\Drivers" -Force
+
+        Write-Host "Driver pack successfully staged and injected into offline image." -ForegroundColor Green
+    }
+    catch {
+        Write-Warning "Driver pack operation failed: $_"
+    }
 
     Write-Host "Drivers and features updated. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    # Restart-Computer -Force
+    Restart-Computer -Force
 
 } catch {
     Write-Error "Deployment failed: $_"
