@@ -103,7 +103,7 @@ try {
         EnableUserConfirmation = $true
         EnableProvisioningDiagnostics = $true
         DeviceLicensingType = "WindowsEnterprise"
-        Language = "en-GB"
+        Language = "en-US"
         SkipZDP = $true
         SkipUserStatusPage = $false
         SkipAccountSetup = $false
@@ -127,10 +127,10 @@ try {
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
     <settings pass="oobeSystem">
         <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-            <InputLocale>en-GB</InputLocale>
-            <SystemLocale>en-GB</SystemLocale>
-            <UILanguage>en-GB</UILanguage>
-            <UserLocale>en-GB</UserLocale>
+            <InputLocale>en-US</InputLocale>
+            <SystemLocale>en-US</SystemLocale>
+            <UILanguage>en-US</UILanguage>
+            <UserLocale>en-US</UserLocale>
         </component>
         <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
             <OOBE>
