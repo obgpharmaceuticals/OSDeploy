@@ -63,11 +63,11 @@ try {
     net use $DriveLetter /delete /yes > $null 2>&1
     net use $DriveLetter $NetworkPath /persistent:no | Out-Null
 
-    $WimPath = "$DriveLetter\install.wim"
+    $WimPath = "$DriveLetter\installnew.wim"
     if (-not (Test-Path $WimPath)) { throw "WIM file not found at $WimPath" }
 
     Write-Host "Applying Windows image..."
-    Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image","/ImageFile:$WimPath","/Index:6","/ApplyDir:C:\" -Wait -PassThru
+    Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image","/ImageFile:$WimPath","/Index:5","/ApplyDir:C:\" -Wait -PassThru
 
     # === Boot files ===
     if (-not (Test-Path "S:\EFI\Microsoft\Boot")) { New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null }
