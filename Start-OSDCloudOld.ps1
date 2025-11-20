@@ -67,7 +67,7 @@ try {
     if (-not (Test-Path $WimPath)) { throw "WIM file not found at $WimPath" }
 
     Write-Host "Applying Windows image..."
-    Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image","/ImageFile:$WimPath","/Index:6","/ApplyDir:C:\" -Wait -PassThru
+    Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image","/ImageFile:$WimPath","/Index:5","/ApplyDir:C:\" -Wait -PassThru
 
     # === Boot files ===
     if (-not (Test-Path "S:\EFI\Microsoft\Boot")) { New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null }
@@ -103,7 +103,7 @@ try {
         EnableUserConfirmation = $true
         EnableProvisioningDiagnostics = $true
         DeviceLicensingType = "WindowsEnterprise"
-        Language = "en-US"
+        Language = "en-GB"
         SkipZDP = $true
         SkipUserStatusPage = $false
         SkipAccountSetup = $false
@@ -127,10 +127,10 @@ try {
 <unattend xmlns="urn:schemas-microsoft-com:unattend">
     <settings pass="oobeSystem">
         <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-            <InputLocale>en-US</InputLocale>
-            <SystemLocale>en-US</SystemLocale>
-            <UILanguage>en-US</UILanguage>
-            <UserLocale>en-US</UserLocale>
+            <InputLocale>en-GB</InputLocale>
+            <SystemLocale>en-GB</SystemLocale>
+            <UILanguage>en-GB</UILanguage>
+            <UserLocale>en-GB</UserLocale>
         </component>
         <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
             <OOBE>
