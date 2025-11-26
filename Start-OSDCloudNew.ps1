@@ -63,7 +63,7 @@ try {
     net use $DriveLetter /delete /yes > $null 2>&1
     net use $DriveLetter $NetworkPath /persistent:no | Out-Null
 
-    $WimPath = "$DriveLetter\installnew.wim"
+    $WimPath = "$DriveLetter\install.wim"
     if (-not (Test-Path $WimPath)) { throw "WIM file not found at $WimPath" }
 
     Write-Host "Applying Windows image..."
