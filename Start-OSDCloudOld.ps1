@@ -67,7 +67,7 @@ try {
     if (-not (Test-Path $WimPath)) { throw "WIM file not found at $WimPath" }
 
     Write-Host "Applying Windows image..."
-    Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image","/ImageFile:$WimPath","/Index:2","/ApplyDir:C:\" -Wait -PassThru
+    Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image","/ImageFile:$WimPath","/Index:1","/ApplyDir:C:\" -Wait -PassThru
 
     # === Boot files ===
     if (-not (Test-Path "S:\EFI\Microsoft\Boot")) { New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null }
@@ -193,7 +193,7 @@ echo Completed Autopilot upload + user assignment, driver expansion, DriverStore
 
     Write-Host "Drivers and features updated. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    # Restart-Computer -Force
+    Restart-Computer -Force
 
 } catch {
     Write-Error "Deployment failed: $_"
