@@ -190,10 +190,12 @@ echo Completed Autopilot upload + user assignment, driver expansion, DriverStore
 
     # THIS IS IMPORTANT: Save-MyDriverPack STAYS HERE
     Save-MyDriverPack -expand
+    # Inject drivers into the offline DriverStore using PnPUtil (bypass DISM sharing violations)
+    Start-Process pnputil.exe -ArgumentList "/add-driver 'C:\Drivers\*.inf' /subdirs /install /target-path C:\Windows" -Wait
 
     Write-Host "Drivers and features updated. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
-    Restart-Computer -Force
+    # Restart-Computer -Force
 
 } catch {
     Write-Error "Deployment failed: $_"
