@@ -190,8 +190,23 @@ echo Completed Autopilot upload + user assignment, driver expansion, DriverStore
 
     # THIS IS IMPORTANT: Save-MyDriverPack STAYS HERE
     Save-MyDriverPack -expand
-    # Inject drivers into the offline DriverStore using PnPUtil (bypass DISM sharing violations)
-    Start-Process pnputil.exe -ArgumentList "/add-driver 'C:\Drivers\*.inf' /subdirs /install /target-path C:\Windows" -Wait
+
+    # === LENOVO OFFLINE INJECTION BYPASS ===
+    Write-Host "Extracting Lenovo Driver Pack..." -ForegroundColor Yellow
+    $DriverEXE = Get-ChildItem -Path "C:\Drivers" -Filter "*.exe" -Recurse | Select-Object -First 1
+    
+    if ($DriverEXE) {
+        # Lenovo's standard silent extract switch is /VERYSILENT /DIR=path or /EXTRACT=path
+        # We use Start-Process to ensure WinPE waits for the extraction to finish
+        $ExtractPath = "C:\Drivers\Extracted"
+        Start-Process -FilePath $DriverEXE.FullName -ArgumentList "/VERYSILENT /EXTRACT=""$ExtractPath""" -Wait
+        
+        Write-Host "Injecting INF files into Offline DriverStore..." -ForegroundColor Cyan
+        # This bypasses the DISM 0x80070020 error by targeting the file structure directly
+        pnputil.exe /add-driver "$ExtractPath\*.inf" /subdirs /install /target-path C:\Windows
+    } else {
+        Write-Warning "No Lenovo EXE found in C:\Drivers to extract."
+    }
 
     Write-Host "Drivers and features updated. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
