@@ -63,7 +63,7 @@ try {
     net use $DriveLetter /delete /yes > $null 2>&1
     net use $DriveLetter $NetworkPath /persistent:no | Out-Null
 
-    $WimPath = "$DriveLetter\installnew.wim"
+    $WimPath = "$DriveLetter\install.wim"
     if (-not (Test-Path $WimPath)) { throw "WIM file not found at $WimPath" }
 
     Write-Host "Applying Windows image..."
@@ -188,25 +188,22 @@ echo Completed Autopilot upload + user assignment, driver expansion, DriverStore
     New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
 
-    # THIS IS IMPORTANT: Save-MyDriverPack STAYS HERE
-    Save-MyDriverPack -expand
+    # === NETWORK DRIVER INJECTION (OFFLINE) ===
+Write-Host "Updating Offline Driver Store from Network Share..." -ForegroundColor Cyan
 
-    # === LENOVO OFFLINE INJECTION BYPASS ===
-    Write-Host "Extracting Lenovo Driver Pack..." -ForegroundColor Yellow
-    $DriverEXE = Get-ChildItem -Path "C:\Drivers" -Filter "*.exe" -Recurse | Select-Object -First 1
-    
-    if ($DriverEXE) {
-        # Lenovo's standard silent extract switch is /VERYSILENT /DIR=path or /EXTRACT=path
-        # We use Start-Process to ensure WinPE waits for the extraction to finish
-        $ExtractPath = "C:\Drivers\Extracted"
-        Start-Process -FilePath $DriverEXE.FullName -ArgumentList "/VERYSILENT /EXTRACT=""$ExtractPath""" -Wait
-        
-        Write-Host "Injecting INF files into Offline DriverStore..." -ForegroundColor Cyan
-        # This bypasses the DISM 0x80070020 error by targeting the file structure directly
-        pnputil.exe /add-driver "$ExtractPath\*.inf" /subdirs /install /target-path C:\Windows
-    } else {
-        Write-Warning "No Lenovo EXE found in C:\Drivers to extract."
-    }
+# Define your source and target
+$NetworkDriverPath = "M:\Drivers"
+$TargetOSPath = "C:\Windows"
+
+if (Test-Path $NetworkDriverPath) {
+    # /add-driver: Points to the network share INF files
+    # /subdirs: Ensures it searches all Lenovo subfolders
+    # /install: Stages them into the Driver Store
+    # /target-path: Tells PnPUtil to modify the offline C: drive database, NOT the PE environment
+    pnputil.exe /add-driver "$NetworkDriverPath\*.inf" /subdirs /install /target-path $TargetOSPath
+} else {
+    Write-Warning "Driver folder not found on network share: $NetworkDriverPath"
+}
 
     Write-Host "Drivers and features updated. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
