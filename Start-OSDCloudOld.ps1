@@ -196,11 +196,10 @@ $NetworkDriverPath = "M:\Drivers"
 $TargetOSPath = "C:\Windows"
 
 if (Test-Path $NetworkDriverPath) {
-    # /add-driver: Points to the network share INF files
-    # /subdirs: Ensures it searches all Lenovo subfolders
-    # /install: Stages them into the Driver Store
-    # /target-path: Tells PnPUtil to modify the offline C: drive database, NOT the PE environment
-    pnputil.exe /add-driver "$NetworkDriverPath\*.inf" /subdirs /install /target-path $TargetOSPath
+    Write-Host "Injecting Drivers from Network to C:\Windows using DISM..." -ForegroundColor Cyan
+    # Use /Image:C:\ to target the disk directly
+    # Use /LogPath to capture any specific errors in PE
+    dism.exe /Image:C:\ /Add-Driver /Driver:"M:\Drivers" /Recurse /LogPath:X:\dism_injection.log
 } else {
     Write-Warning "Driver folder not found on network share: $NetworkDriverPath"
 }
