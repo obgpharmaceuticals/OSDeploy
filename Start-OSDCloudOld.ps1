@@ -188,33 +188,33 @@ echo Completed Autopilot upload + user assignment, driver expansion, DriverStore
     New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
 
-    # === NETWORK DRIVER INJECTION (OFFLINE) ===
+    # === MANUAL FLAT DRIVER INJECTION (PULL FROM M: TO C:) ===
     if (Test-Path "M:\Drivers") {
-        Write-Host "Injecting Drivers from Network to C:\Windows using DISM..." -ForegroundColor Cyan
-        dism.exe /Image:C:\ /Add-Driver /Driver:"M:\Drivers" /Recurse /ForceUnsigned /LogPath:X:\dism_injection.log
+        Write-Host "Pulling drivers from M:\Drivers and performing Flat Injection..." -ForegroundColor Cyan
+        
+        # 1. Ensure local staging folder exists
+        if (-not (Test-Path "C:\Drivers\Network")) { New-Item -Path "C:\Drivers\Network" -ItemType Directory -Force | Out-Null }
+        
+        # 2. Local copy for OS use
+        Copy-Item -Path "M:\Drivers\*" -Destination "C:\Drivers\Network" -Recurse -Force -ErrorAction SilentlyContinue
+
+        # 3. Flat Injection to Windows System Folders
+        $AllDriverFiles = Get-ChildItem -Path "C:\Drivers\Network" -Recurse
+
+        foreach ($File in $AllDriverFiles) {
+            switch ($File.Extension.ToLower()) {
+                '.inf' { Copy-Item -Path $File.FullName -Destination "C:\Windows\inf" -Force -ErrorAction SilentlyContinue }
+                '.sys' { Copy-Item -Path $File.FullName -Destination "C:\Windows\System32\drivers" -Force -ErrorAction SilentlyContinue }
+                '.dll' { Copy-Item -Path $File.FullName -Destination "C:\Windows\System32" -Force -ErrorAction SilentlyContinue }
+                '.cat' { Copy-Item -Path $File.FullName -Destination "C:\Windows\inf" -Force -ErrorAction SilentlyContinue }
+            }
+        }
+        Write-Host "Manual injection of .inf, .sys, .dll, and .cat files complete." -ForegroundColor Green
     } else {
         Write-Warning "Driver folder not found on network share: M:\Drivers"
     }
 
-    Write-Host "Forcing publication of staged drivers..." -ForegroundColor Cyan
-
-    # 1. Target all .inf files inside the FileRepository (where DISM staged them)
-    $StagedInfs = Get-ChildItem -Path "C:\Windows\System32\DriverStore\FileRepository" -Recurse -Filter "*.inf"
-
-    foreach ($Inf in $StagedInfs) {
-        # 2. Define target path ensuring it's treated as a file, not a directory
-        $DestPath = Join-Path "C:\Windows\Inf" $Inf.Name
-        
-        # 3. Copy the file. If an accidental folder exists with that name, remove it first.
-        if (Test-Path $DestPath) {
-            $Item = Get-Item $DestPath
-            if ($Item.PSIsContainer) { Remove-Item $DestPath -Recurse -Force }
-        }
-        
-        Copy-Item -Path $Inf.FullName -Destination $DestPath -Force -ErrorAction SilentlyContinue
-    }
-
-    Write-Host "Drivers and features updated. Rebooting in 5 seconds..."
+    Write-Host "Deployment steps complete. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     # Restart-Computer -Force
 
