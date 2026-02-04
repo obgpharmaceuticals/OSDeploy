@@ -191,21 +191,28 @@ echo Completed Autopilot upload + user assignment, driver expansion, DriverStore
     # === NETWORK DRIVER INJECTION (OFFLINE) ===
     if (Test-Path "M:\Drivers") {
         Write-Host "Injecting Drivers from Network to C:\Windows using DISM..." -ForegroundColor Cyan
-        # DISM rebuilding the store on the applied image
         dism.exe /Image:C:\ /Add-Driver /Driver:"M:\Drivers" /Recurse /ForceUnsigned /LogPath:X:\dism_injection.log
     } else {
         Write-Warning "Driver folder not found on network share: M:\Drivers"
     }
-Write-Host "Forcing publication of staged drivers..." -ForegroundColor Cyan
 
-# 1. Find all .inf files inside the FileRepository (where DISM put them)
-$StagedInfs = Get-ChildItem -Path "C:\Windows\System32\DriverStore\FileRepository" -Recurse -Filter "*.inf"
+    Write-Host "Forcing publication of staged drivers..." -ForegroundColor Cyan
 
-foreach ($Inf in $StagedInfs) {
-    # 2. Copy them to the main C:\Windows\Inf folder. 
-    # This 'publishes' them so Windows sees them as 'available for use' on boot.
-    Copy-Item -Path $Inf.FullName -Destination "C:\Windows\Inf\$($Inf.Name)" -Force -ErrorAction SilentlyContinue
-}
+    # 1. Target all .inf files inside the FileRepository (where DISM staged them)
+    $StagedInfs = Get-ChildItem -Path "C:\Windows\System32\DriverStore\FileRepository" -Recurse -Filter "*.inf"
+
+    foreach ($Inf in $StagedInfs) {
+        # 2. Define target path ensuring it's treated as a file, not a directory
+        $DestPath = Join-Path "C:\Windows\Inf" $Inf.Name
+        
+        # 3. Copy the file. If an accidental folder exists with that name, remove it first.
+        if (Test-Path $DestPath) {
+            $Item = Get-Item $DestPath
+            if ($Item.PSIsContainer) { Remove-Item $DestPath -Recurse -Force }
+        }
+        
+        Copy-Item -Path $Inf.FullName -Destination $DestPath -Force -ErrorAction SilentlyContinue
+    }
 
     Write-Host "Drivers and features updated. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
