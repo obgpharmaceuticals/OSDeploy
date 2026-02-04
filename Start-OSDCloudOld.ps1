@@ -189,20 +189,13 @@ echo Completed Autopilot upload + user assignment, driver expansion, DriverStore
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
 
     # === NETWORK DRIVER INJECTION (OFFLINE) ===
-Write-Host "Updating Offline Driver Store from Network Share..." -ForegroundColor Cyan
-
-# Define your source and target
-$NetworkDriverPath = "M:\Drivers"
-$TargetOSPath = "C:\Windows"
-
-if (Test-Path $NetworkDriverPath) {
-    Write-Host "Injecting Drivers from Network to C:\Windows using DISM..." -ForegroundColor Cyan
-    # Use /Image:C:\ to target the disk directly
-    # Use /LogPath to capture any specific errors in PE
-    dism.exe /Image:C:\ /Add-Driver /Driver:"M:\Drivers" /Recurse /LogPath:X:\dism_injection.log
-} else {
-    Write-Warning "Driver folder not found on network share: $NetworkDriverPath"
-}
+    if (Test-Path "M:\Drivers") {
+        Write-Host "Injecting Drivers from Network to C:\Windows using DISM..." -ForegroundColor Cyan
+        # DISM rebuilding the store on the applied image
+        dism.exe /Image:C:\ /Add-Driver /Driver:"M:\Drivers" /Recurse /ForceUnsigned /LogPath:X:\dism_injection.log
+    } else {
+        Write-Warning "Driver folder not found on network share: M:\Drivers"
+    }
 
     Write-Host "Drivers and features updated. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
