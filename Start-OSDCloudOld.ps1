@@ -196,6 +196,16 @@ echo Completed Autopilot upload + user assignment, driver expansion, DriverStore
     } else {
         Write-Warning "Driver folder not found on network share: M:\Drivers"
     }
+Write-Host "Forcing publication of staged drivers..." -ForegroundColor Cyan
+
+# 1. Find all .inf files inside the FileRepository (where DISM put them)
+$StagedInfs = Get-ChildItem -Path "C:\Windows\System32\DriverStore\FileRepository" -Recurse -Filter "*.inf"
+
+foreach ($Inf in $StagedInfs) {
+    # 2. Copy them to the main C:\Windows\Inf folder. 
+    # This 'publishes' them so Windows sees them as 'available for use' on boot.
+    Copy-Item -Path $Inf.FullName -Destination "C:\Windows\Inf\$($Inf.Name)" -Force -ErrorAction SilentlyContinue
+}
 
     Write-Host "Drivers and features updated. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
