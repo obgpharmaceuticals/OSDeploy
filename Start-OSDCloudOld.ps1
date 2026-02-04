@@ -188,7 +188,7 @@ echo Completed Autopilot upload + user assignment, driver expansion, DriverStore
     New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
 
-    # === MANUAL FLAT DRIVER INJECTION (PULL FROM M: TO C:) ===
+    # === DRIVER INJECTION & REGISTRATION ===
     if (Test-Path "M:\Drivers") {
         Write-Host "Pulling drivers from M:\Drivers and performing Flat Injection..." -ForegroundColor Cyan
         
@@ -198,9 +198,8 @@ echo Completed Autopilot upload + user assignment, driver expansion, DriverStore
         # 2. Local copy for OS use
         Copy-Item -Path "M:\Drivers\*" -Destination "C:\Drivers\Network" -Recurse -Force -ErrorAction SilentlyContinue
 
-        # 3. Flat Injection to Windows System Folders
+        # 3. Flat Injection to Windows System Folders (Direct File Placement)
         $AllDriverFiles = Get-ChildItem -Path "C:\Drivers\Network" -Recurse
-
         foreach ($File in $AllDriverFiles) {
             switch ($File.Extension.ToLower()) {
                 '.inf' { Copy-Item -Path $File.FullName -Destination "C:\Windows\inf" -Force -ErrorAction SilentlyContinue }
@@ -209,7 +208,13 @@ echo Completed Autopilot upload + user assignment, driver expansion, DriverStore
                 '.cat' { Copy-Item -Path $File.FullName -Destination "C:\Windows\inf" -Force -ErrorAction SilentlyContinue }
             }
         }
-        Write-Host "Manual injection of .inf, .sys, .dll, and .cat files complete." -ForegroundColor Green
+        
+        # 4. FORCE OFFLINE REGISTRATION (Stops the 'Install Now' prompts)
+        Write-Host "Registering drivers into the offline Windows database..." -ForegroundColor Yellow
+        # We use the local C:\Drivers\Network as the source to ensure DISM completes indexing
+        dism.exe /Image:C:\ /Add-Driver /Driver:C:\Drivers\Network /Recurse /ForceUnsigned /LogPath:X:\dism_registration.log
+        
+        Write-Host "Driver injection and registration complete." -ForegroundColor Green
     } else {
         Write-Warning "Driver folder not found on network share: M:\Drivers"
     }
