@@ -188,18 +188,18 @@ echo Completed Autopilot upload + user assignment, driver expansion, DriverStore
     New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
     New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
 
-    # === DRIVER INJECTION & REGISTRATION ===
+    # === CRITICAL DRIVER PRE-STAGING & OFFLINE REGISTRATION ===
     if (Test-Path "M:\Drivers") {
-        Write-Host "Pulling drivers from M:\Drivers and performing Flat Injection..." -ForegroundColor Cyan
+        Write-Host "Pulling drivers and performing deep injection (WiFi/Chipset)..." -ForegroundColor Cyan
         
-        # 1. Ensure local staging folder exists
-        if (-not (Test-Path "C:\Drivers\Network")) { New-Item -Path "C:\Drivers\Network" -ItemType Directory -Force | Out-Null }
-        
-        # 2. Local copy for OS use
-        Copy-Item -Path "M:\Drivers\*" -Destination "C:\Drivers\Network" -Recurse -Force -ErrorAction SilentlyContinue
+        # 1. Local Staging Folder
+        $LocalDriverPath = "C:\Drivers\Network"
+        if (-not (Test-Path $LocalDriverPath)) { New-Item -Path $LocalDriverPath -ItemType Directory -Force | Out-Null }
+        Copy-Item -Path "M:\Drivers\*" -Destination $LocalDriverPath -Recurse -Force -ErrorAction SilentlyContinue
 
-        # 3. Flat Injection to Windows System Folders (Direct File Placement)
-        $AllDriverFiles = Get-ChildItem -Path "C:\Drivers\Network" -Recurse
+        # 2. Flat Injection (Force binaries into Kernel paths to solve SSID remediation failures)
+        Write-Host "Injecting binaries into System32 to ensure interface availability..." -ForegroundColor Yellow
+        $AllDriverFiles = Get-ChildItem -Path $LocalDriverPath -Recurse
         foreach ($File in $AllDriverFiles) {
             switch ($File.Extension.ToLower()) {
                 '.inf' { Copy-Item -Path $File.FullName -Destination "C:\Windows\inf" -Force -ErrorAction SilentlyContinue }
@@ -209,11 +209,14 @@ echo Completed Autopilot upload + user assignment, driver expansion, DriverStore
             }
         }
         
-        # 4. FORCE OFFLINE REGISTRATION (Stops the 'Install Now' prompts)
-        Write-Host "Registering drivers into the offline Windows database..." -ForegroundColor Yellow
-        # We use the local C:\Drivers\Network as the source to ensure DISM completes indexing
-        dism.exe /Image:C:\ /Add-Driver /Driver:C:\Drivers\Network /Recurse /ForceUnsigned /LogPath:X:\dism_registration.log
+        # 3. DISM Offline Registration (Marks hardware as 'Pre-Installed')
+        Write-Host "Registering drivers in the offline DriverStore database..." -ForegroundColor Yellow
+        dism.exe /Image:C:\ /Add-Driver /Driver:$LocalDriverPath /Recurse /ForceUnsigned /LogPath:X:\dism_registration.log
         
+        # 4. Trigger Component Evaluation
+        # This prevents the 'Install now' prompt by forcing Windows to process the new drivers immediately on boot.
+        dism.exe /Image:C:\ /Cleanup-Image /StartComponentCleanup
+
         Write-Host "Driver injection and registration complete." -ForegroundColor Green
     } else {
         Write-Warning "Driver folder not found on network share: M:\Drivers"
