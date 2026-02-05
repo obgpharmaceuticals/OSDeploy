@@ -108,16 +108,6 @@ try {
         SkipUserStatusPage = $false
         SkipAccountSetup = $false
         SkipOOBE = $false
-        RemovePreInstalledApps = @(
-            "Microsoft.ZuneMusic",
-            "Microsoft.XboxApp",
-            "Microsoft.XboxGameOverlay",
-            "Microsoft.XboxGamingOverlay",
-            "Microsoft.XboxSpeechToTextOverlay",
-            "Microsoft.YourPhone",
-            "Microsoft.Getstarted",
-            "Microsoft.3DBuilder"
-        )
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
@@ -151,8 +141,6 @@ try {
     Set-Content -Path "C:\Windows\Panther\Unattend\Unattend.xml" -Value $UnattendXml -Encoding UTF8
 
     # === SetupComplete.cmd ===
-    # Cleaned up to avoid driver conflicts with the main script
-    $PrimaryUserUPN = "fooUser@obg.co.uk"
     $SetupCompleteContent = @"
 @echo off
 if not exist C:\SetupLogs mkdir C:\SetupLogs
@@ -160,16 +148,8 @@ set LOGFILE=C:\SetupLogs\SetupComplete.log
 
 echo ==== AUTOPILOT UPLOAD ==== >> %LOGFILE%
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1" -TenantId c95ebf8f-ebb1-45ad-8ef4-463fa94051ee -AppId faa1bc75-81c7-4750-ac62-1e5ea3ac48c5 -AppSecret ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB- -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
-
-echo ==== WINDOWS UPDATE ==== >> %LOGFILE%
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Install-Module PSWindowsUpdate -Force; Import-Module PSWindowsUpdate; Get-WindowsUpdate -AcceptAll -Install -IgnoreReboot" >> %LOGFILE% 2>&1
 "@
     Set-Content -Path "C:\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupCompleteContent -Encoding ASCII
-
-    # --- Requirement flag for Win32 app ---
-    # We use -Force to ensure the hive is written
-    New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -Force -ErrorAction SilentlyContinue | Out-Null
-    New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
 
     # === DRIVER INJECTION ===
     if (Test-Path "M:\Drivers") {
@@ -177,31 +157,16 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Install-Module PSWin
         $LocalDriverPath = "C:\Drivers\Network"
         if (-not (Test-Path $LocalDriverPath)) { New-Item -Path $LocalDriverPath -ItemType Directory -Force | Out-Null }
         Copy-Item -Path "M:\Drivers\*" -Destination $LocalDriverPath -Recurse -Force -ErrorAction SilentlyContinue
-
-        # Flat Injection
-        $AllDriverFiles = Get-ChildItem -Path $LocalDriverPath -Recurse
-        foreach ($File in $AllDriverFiles) {
-            switch ($File.Extension.ToLower()) {
-                '.inf' { Copy-Item -Path $File.FullName -Destination "C:\Windows\inf" -Force -ErrorAction SilentlyContinue }
-                '.sys' { Copy-Item -Path $File.FullName -Destination "C:\Windows\System32\drivers" -Force -ErrorAction SilentlyContinue }
-                '.cat' { Copy-Item -Path $File.FullName -Destination "C:\Windows\inf" -Force -ErrorAction SilentlyContinue }
-            }
-        }
-        
-        # DISM Registration
         dism.exe /Image:C:\ /Add-Driver /Driver:$LocalDriverPath /Recurse /ForceUnsigned
-        dism.exe /Image:C:\ /Cleanup-Image /StartComponentCleanup
     }
 
-    # === THE FIX FOR 0x87d1041c: FLUSH AND UNMOUNT ===
-    # This ensures all registry keys and file handles are released so Intune doesn't hit a 'Locked' or 'Dirty' state
-    Write-Host "Committing system changes to disk..." -ForegroundColor Yellow
-    [gc]::Collect()
-    Start-Sleep -Seconds 2
-    
-    # Force a 'Sync' of the filesystem
-    $shell = New-Object -ComObject Shell.Application
-    $shell.Namespace(17).Self.InvokeVerb("Eject") # Dummy trigger to flush buffers
+    # === OFFLINE REGISTRY INJECTION (THE FIX) ===
+    # This mounts the offline C:\ drive's registry and sets the signal there.
+    # This prevents the agent from missing the key due to a "dirty" state reboot.
+    Write-Host "Injecting offline registry signal..." -ForegroundColor Yellow
+    reg load HKLM\OfflineSoftware C:\Windows\System32\config\SOFTWARE
+    reg add "HKLM\OfflineSoftware\OBG\Signals" /v "ReadyForWin32" /t REG_DWORD /d 1 /f
+    reg unload HKLM\OfflineSoftware
 
     Write-Host "Deployment steps complete. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
