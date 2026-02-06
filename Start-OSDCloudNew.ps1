@@ -108,16 +108,6 @@ try {
         SkipUserStatusPage = $false
         SkipAccountSetup = $false
         SkipOOBE = $false
-        RemovePreInstalledApps = @(
-            "Microsoft.ZuneMusic",
-            "Microsoft.XboxApp",
-            "Microsoft.XboxGameOverlay",
-            "Microsoft.XboxGamingOverlay",
-            "Microsoft.XboxSpeechToTextOverlay",
-            "Microsoft.YourPhone",
-            "Microsoft.Getstarted",
-            "Microsoft.3DBuilder"
-        )
     }
     $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
 
@@ -151,47 +141,34 @@ try {
     Set-Content -Path "C:\Windows\Panther\Unattend\Unattend.xml" -Value $UnattendXml -Encoding UTF8
 
     # === SetupComplete.cmd ===
-    $PrimaryUserUPN = "fooUser@obg.co.uk" # <-- replace with desired user
     $SetupCompleteContent = @"
 @echo off
-REM Create log folder
 if not exist C:\SetupLogs mkdir C:\SetupLogs
 set LOGFILE=C:\SetupLogs\SetupComplete.log
 
-REM AUTOPILOT UPLOAD + USER ASSIGN
-echo ==== AUTOPILOT UPLOAD + USER ASSIGN ==== >> %LOGFILE%
-echo %DATE% %TIME% >> %LOGFILE%
-timeout /t 30 /nobreak > nul
-timeout /t 10 /nobreak > nul
-
+echo ==== AUTOPILOT UPLOAD ==== >> %LOGFILE%
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1" -TenantId c95ebf8f-ebb1-45ad-8ef4-463fa94051ee -AppId faa1bc75-81c7-4750-ac62-1e5ea3ac48c5 -AppSecret ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB- -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
-
-REM EXPAND DRIVER PACKS
-echo ==== EXPAND DRIVER PACKS ==== >> %LOGFILE%
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Expand-StagedDriverPack" >> %LOGFILE% 2>&1
-
-REM ADD DRIVERS TO DRIVERSTORE
-echo ==== ADD DRIVERS TO DRIVERSTORE ==== >> %LOGFILE%
-powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-ChildItem -Path 'C:\Drivers\sccm' -Recurse -Filter '*.inf' | ForEach-Object { Write-Output ('Adding driver: ' + $_.FullName); Start-Process pnputil.exe -ArgumentList '/add-driver', ('\"' + $_.FullName + '\"'), '/install' -Wait }" >> %LOGFILE% 2>&1
-
-REM WINDOWS UPDATE
-echo ==== INSTALL WINDOWS UPDATES ==== >> %LOGFILE%
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Install-Module PSWindowsUpdate -Force; Import-Module PSWindowsUpdate; Get-WindowsUpdate -AcceptAll -Install -IgnoreReboot" >> %LOGFILE% 2>&1
-
-echo Completed Autopilot upload + user assignment, driver expansion, DriverStore injection, and Windows updates >> %LOGFILE%
 "@
     Set-Content -Path "C:\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupCompleteContent -Encoding ASCII
-    Write-Host "SetupComplete.cmd created successfully."
 
-    # --- Requirement flag for Win32 app ---
-    New-Item -Path "HKLM:\SOFTWARE\OBG" -ErrorAction SilentlyContinue | Out-Null
-    New-Item -Path "HKLM:\SOFTWARE\OBG\Signals" -ErrorAction SilentlyContinue | Out-Null
-    New-ItemProperty -Path "HKLM:\SOFTWARE\OBG\Signals" -Name "ReadyForWin32" -PropertyType DWord -Value 1 -Force | Out-Null
+    # === DRIVER INJECTION ===
+    if (Test-Path "M:\Drivers") {
+        Write-Host "Injecting Drivers..." -ForegroundColor Cyan
+        $LocalDriverPath = "C:\Drivers\Network"
+        if (-not (Test-Path $LocalDriverPath)) { New-Item -Path $LocalDriverPath -ItemType Directory -Force | Out-Null }
+        Copy-Item -Path "M:\Drivers\*" -Destination $LocalDriverPath -Recurse -Force -ErrorAction SilentlyContinue
+        dism.exe /Image:C:\ /Add-Driver /Driver:$LocalDriverPath /Recurse /ForceUnsigned
+    }
 
-    # THIS IS IMPORTANT: Save-MyDriverPack STAYS HERE
-    Save-MyDriverPack -expand
+    # === OFFLINE REGISTRY INJECTION (THE FIX) ===
+    # This mounts the offline C:\ drive's registry and sets the signal there.
+    # This prevents the agent from missing the key due to a "dirty" state reboot.
+    Write-Host "Injecting offline registry signal..." -ForegroundColor Yellow
+    reg load HKLM\OfflineSoftware C:\Windows\System32\config\SOFTWARE
+    reg add "HKLM\OfflineSoftware\OBG\Signals" /v "ReadyForWin32" /t REG_DWORD /d 1 /f
+    reg unload HKLM\OfflineSoftware
 
-    Write-Host "Drivers and features updated. Rebooting in 5 seconds..."
+    Write-Host "Deployment steps complete. Rebooting in 5 seconds..."
     Start-Sleep -Seconds 5
     Restart-Computer -Force
 
