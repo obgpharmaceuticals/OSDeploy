@@ -9,12 +9,14 @@ try {
     Write-Host "1. Productivity Desktop"
     Write-Host "2. Productivity Laptop"
     Write-Host "3. Line of Business Desktop"
-    $selection = Read-Host "Enter choice (1-3)"
+    Write-Host "4. Productivity Laptop UD Test"
+    $selection = Read-Host "Enter choice (1-4)"
 
     switch ($selection) {
         '1' { $GroupTag = "ProductivityDesktop11" }
         '2' { $GroupTag = "ProductivityLaptop11" }
         '3' { $GroupTag = "LineOfBusinessDesktop11" }
+        '4' { $GroupTag = "ProductivityLaptop11UD" }
         default {
             Write-Warning "Invalid choice. Defaulting to ProductivityDesktop"
             $GroupTag = "ProductivityDesktop11"
