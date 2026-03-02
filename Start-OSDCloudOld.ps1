@@ -2,19 +2,21 @@
 Start-Transcript -Path "X:\DeployScript.log" -Append
 
 try {
-    Write-Host "Starting Windows 11 deployment..." -ForegroundColor Cyan
+    Write-Host "Starting Windows 11 User-Driven Deployment..." -ForegroundColor Cyan
 
-    # Prompt for system type
-    Write-Host "Select system type:"
+    # === User Selection for GroupTag ===
+    Write-Host "Select system type (User-Driven Profiles):"
     Write-Host "1. Productivity Desktop"
     Write-Host "2. Productivity Laptop"
     Write-Host "3. Line of Business Desktop"
-    $selection = Read-Host "Enter choice (1-3)"
+    Write-Host "4. Productivity Laptop UD Test"
+    $selection = Read-Host "Enter choice (1-4)"
 
     switch ($selection) {
         '1' { $GroupTag = "ProductivityDesktop11" }
         '2' { $GroupTag = "ProductivityLaptop11" }
         '3' { $GroupTag = "LineOfBusinessDesktop11" }
+        '4' { $GroupTag = "ProductivityLaptop11UD" }
         default {
             Write-Warning "Invalid choice. Defaulting to ProductivityDesktop"
             $GroupTag = "ProductivityDesktop11"
@@ -22,7 +24,7 @@ try {
     }
     Write-Host "GroupTag set to: $GroupTag"
 
-    # === Disk preparation ===
+    # === Disk Preparation ===
     $Disk = Get-Disk | Where-Object { $_.IsSystem -eq $false -and $_.OperationalStatus -eq "Online" -and $_.BusType -in @("NVMe","SATA","SCSI","ATA") } | Sort-Object -Property Size -Descending | Select-Object -First 1
     if (-not $Disk) { throw "No suitable disk found." }
     $DiskNumber = $Disk.Number
@@ -30,8 +32,6 @@ try {
     Write-Host "Clearing and partitioning disk $DiskNumber ($($Disk.FriendlyName))"
     Clear-Disk -Number $DiskNumber -RemoveData -RemoveOEM -Confirm:$false
     Initialize-Disk -Number $DiskNumber -PartitionStyle GPT -Confirm:$false
-    Set-Disk -Number $DiskNumber -IsOffline $false
-    Set-Disk -Number $DiskNumber -IsReadOnly $false
 
     # EFI 512MB
     $ESP = New-Partition -DiskNumber $DiskNumber -Size 512MB -GptType "{C12A7328-F81F-11D2-BA4B-00A0C93EC93B}"
@@ -41,139 +41,13 @@ try {
     # MSR 128MB
     New-Partition -DiskNumber $DiskNumber -Size 128MB -GptType "{E3C9E316-0B5C-4DB8-817D-F92DF00215AE}" | Out-Null
 
-    # OS partition rest of disk
+    # OS Partition
     $OSPartition = New-Partition -DiskNumber $DiskNumber -UseMaximumSize
     Format-Volume -Partition $OSPartition -FileSystem NTFS -NewFileSystemLabel "Windows" -Confirm:$false
     Set-Partition -DiskNumber $DiskNumber -PartitionNumber $OSPartition.PartitionNumber -NewDriveLetter C
 
-    # === Map deployment share and apply WIM ===
+    # === Map Deployment Share and Apply WIM ===
     $ClientIP = (Get-WmiObject Win32_NetworkAdapterConfiguration | Where-Object { $_.IPEnabled -eq $true -and $_.IPAddress -ne $null } | ForEach-Object { $_.IPAddress } | Where-Object { $_ -notlike "169.*" -and $_ -ne "127.0.0.1" } | Select-Object -First 1)
     if (-not $ClientIP) { throw "Could not determine client IP address." }
 
-    $DeploymentServers = @{
-        "10.1.192" = "10.1.192.20"
-        "10.3.192" = "10.3.192.20"
-        "10.5.192" = "10.5.192.20"
-    }
-    $Subnet = ($ClientIP -split "\.")[0..2] -join "."
-    if ($DeploymentServers.ContainsKey($Subnet)) { $ServerIP = $DeploymentServers[$Subnet] } else { throw "No deployment server configured for subnet $Subnet" }
-
-    $NetworkPath = "\\$ServerIP\ReadOnlyShare"
-    $DriveLetter = "M:"
-    net use $DriveLetter /delete /yes > $null 2>&1
-    net use $DriveLetter $NetworkPath /persistent:no | Out-Null
-
-    $WimPath = "$DriveLetter\install.wim"
-    if (-not (Test-Path $WimPath)) { throw "WIM file not found at $WimPath" }
-
-    Write-Host "Applying Windows image..."
-    Start-Process -FilePath dism.exe -ArgumentList "/Apply-Image","/ImageFile:$WimPath","/Index:5","/ApplyDir:C:\" -Wait -PassThru
-
-    # === Boot files ===
-    if (-not (Test-Path "S:\EFI\Microsoft\Boot")) { New-Item -Path "S:\EFI\Microsoft\Boot" -ItemType Directory -Force | Out-Null }
-    bcdboot C:\Windows /s S: /f UEFI
-    if (-not (Test-Path "S:\EFI\Boot")) { New-Item -Path "S:\EFI\Boot" -ItemType Directory -Force | Out-Null }
-    Copy-Item -Path "S:\EFI\Microsoft\Boot\bootmgfw.efi" -Destination "S:\EFI\Boot\bootx64.efi" -Force
-
-    # === Ensure required folders exist ===
-    $Folders = @( "C:\Windows\Panther\Unattend", "C:\Windows\Setup\Scripts", "C:\Autopilot", "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot", "C:\Drivers" )
-    foreach ($Folder in $Folders) {
-        if (-not (Test-Path $Folder)) { New-Item -Path $Folder -ItemType Directory -Force | Out-Null }
-    }
-
-    # === Copy Autopilot script from network share ===
-    $AutoPilotScriptPath = "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1"
-    $AutoPilotScriptURL = "$DriveLetter\Get-WindowsAutoPilotInfo.ps1"
-    Copy-Item -Path $AutoPilotScriptURL -Destination $AutoPilotScriptPath -Force
-
-    # === Autopilot JSONs ===
-    $AutopilotFolder = "C:\ProgramData\Microsoft\Windows\Provisioning\Autopilot"
-    $AutopilotConfig = @{
-        CloudAssignedTenantId = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
-        CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        GroupTag = $GroupTag
-    }
-    $AutopilotConfig | ConvertTo-Json -Depth 3 | Out-File "$AutopilotFolder\AutopilotConfigurationFile.json" -Encoding utf8
-
-    $OOBEJson = @{
-        CloudAssignedTenantId = "c95ebf8f-ebb1-45ad-8ef4-463fa94051ee"
-        CloudAssignedTenantDomain = "obgpharma.onmicrosoft.com"
-        DeviceType = $GroupTag
-        EnableUserStatusTracking = $true
-        EnableUserConfirmation = $true
-        EnableProvisioningDiagnostics = $true
-        DeviceLicensingType = "WindowsEnterprise"
-        Language = "en-GB"
-        SkipZDP = $true
-        SkipUserStatusPage = $false
-        SkipAccountSetup = $false
-        SkipOOBE = $false
-    }
-    $OOBEJson | ConvertTo-Json -Depth 5 | Out-File "$AutopilotFolder\OOBE.json" -Encoding utf8
-
-    # === Unattend.xml ===
-    $UnattendXml = @"
-<?xml version="1.0" encoding="utf-8"?>
-<unattend xmlns="urn:schemas-microsoft-com:unattend">
-    <settings pass="oobeSystem">
-        <component name="Microsoft-Windows-International-Core" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-            <InputLocale>en-GB</InputLocale>
-            <SystemLocale>en-GB</SystemLocale>
-            <UILanguage>en-GB</UILanguage>
-            <UserLocale>en-GB</UserLocale>
-        </component>
-        <component name="Microsoft-Windows-Shell-Setup" processorArchitecture="amd64" publicKeyToken="31bf3856ad364e35" language="neutral" versionScope="nonSxS">
-            <OOBE>
-                <HideEULAPage>true</HideEULAPage>
-                <NetworkLocation>Work</NetworkLocation>
-                <ProtectYourPC>1</ProtectYourPC>
-                <HideLocalAccountScreen>false</HideLocalAccountScreen>
-                <HideOEMRegistrationScreen>false</HideOEMRegistrationScreen>
-                <HideOnlineAccountScreens>false</HideOnlineAccountScreens>
-                <HideWirelessSetupInOOBE>false</HideWirelessSetupInOOBE>
-                <SkipUserOOBE>false</SkipUserOOBE>
-                <SkipMachineOOBE>false</SkipMachineOOBE>
-            </OOBE>
-        </component>
-    </settings>
-</unattend>
-"@
-    Set-Content -Path "C:\Windows\Panther\Unattend\Unattend.xml" -Value $UnattendXml -Encoding UTF8
-
-    # === SetupComplete.cmd ===
-    $SetupCompleteContent = @"
-@echo off
-if not exist C:\SetupLogs mkdir C:\SetupLogs
-set LOGFILE=C:\SetupLogs\SetupComplete.log
-
-echo ==== AUTOPILOT UPLOAD ==== >> %LOGFILE%
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "C:\Autopilot\Get-WindowsAutoPilotInfo.ps1" -TenantId c95ebf8f-ebb1-45ad-8ef4-463fa94051ee -AppId faa1bc75-81c7-4750-ac62-1e5ea3ac48c5 -AppSecret ouu8Q~h2IxPhfb3GP~o2pQOvn2HSmBkOm2D8hcB- -GroupTag "$GroupTag" -Online -Assign >> %LOGFILE% 2>&1
-"@
-    Set-Content -Path "C:\Windows\Setup\Scripts\SetupComplete.cmd" -Value $SetupCompleteContent -Encoding ASCII
-
-    # === DRIVER INJECTION ===
-    if (Test-Path "M:\Drivers") {
-        Write-Host "Injecting Drivers..." -ForegroundColor Cyan
-        $LocalDriverPath = "C:\Drivers\Network"
-        if (-not (Test-Path $LocalDriverPath)) { New-Item -Path $LocalDriverPath -ItemType Directory -Force | Out-Null }
-        Copy-Item -Path "M:\Drivers\*" -Destination $LocalDriverPath -Recurse -Force -ErrorAction SilentlyContinue
-        dism.exe /Image:C:\ /Add-Driver /Driver:$LocalDriverPath /Recurse /ForceUnsigned
-    }
-
-    # === OFFLINE REGISTRY INJECTION (THE FIX) ===
-    # This mounts the offline C:\ drive's registry and sets the signal there.
-    # This prevents the agent from missing the key due to a "dirty" state reboot.
-    Write-Host "Injecting offline registry signal..." -ForegroundColor Yellow
-    reg load HKLM\OfflineSoftware C:\Windows\System32\config\SOFTWARE
-    reg add "HKLM\OfflineSoftware\OBG\Signals" /v "ReadyForWin32" /t REG_DWORD /d 1 /f
-    reg unload HKLM\OfflineSoftware
-
-    Write-Host "Deployment steps complete. Rebooting in 5 seconds..."
-    Start-Sleep -Seconds 5
-    Restart-Computer -Force
-
-} catch {
-    Write-Error "Deployment failed: $_"
-} finally {
-    try { Stop-Transcript } catch {}
-}
+    $DeploymentServers = @{ "10.1.192" = "10.1.192.20"; "10.3.192" = "10.3.192.
